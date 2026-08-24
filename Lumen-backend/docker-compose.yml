@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    container_name: lumen_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-lumen}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-lumen_secret}
+      POSTGRES_DB: ${DB_NAME:-lumen_db}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-lumen}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: lumen_redis
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fastapi:
+    build:
+      context: ./server/ai/python
+      dockerfile: Dockerfile
+    container_name: lumen_fastapi
+    restart: always
+    ports:
+      - '8000:8000'
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MODEL_PATH=models/best.pt
+      - BLUR_THRESHOLD=100.0
+      - PREVENT_SSRF=True
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:8000/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lumen_api
+    restart: always
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    command: >
+      sh -c "npx prisma migrate deploy && npm run start:prod"
+
+volumes:
+  postgres_data:
+  redis_data:

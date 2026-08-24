@@ -1,0 +1,21 @@
+{
+  "dashboard": {
+    "greeting_morning": "Buenos días",
+    "greeting_afternoon": "Buenas tardes",
+    "greeting_evening": "Buenas noches",
+    "quick_actions": "Acciones Rápidas",
+    "recent_reports": "Reportes Recientes",
+    "nearby_issues": "Problemas Cercanos",
+    "report_issue": "Reportar Problema",
+    "my_reports": "Mis Reportes",
+    "emergency": "Emergencia",
+    "pay_bills": "Pagar Facturas",
+    "view_all": "Ver todo",
+    "view_map": "Ver Mapa",
+    "live": "PANEL EN VIVO"
+  },
+  "login": {
+    "welcome": "Bienvenido de nuevo",
+    "continue_guest": "Continuar como Invitado"
+  }
+}

@@ -1,0 +1,43 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+.env
+
+# PyTorch / AI Models
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
+*.pb
+
+# Datasets
+*Dataset*/
+datasets/
+data/
+
+# Training Outputs
+runs/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node / JS
+node_modules/
+.npm/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Large files
+*.csv
+*.tsv
+*.jsonl
+*.jpeg
+*.jpg
+*.png
+*.tiff

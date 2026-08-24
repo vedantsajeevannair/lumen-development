@@ -1,0 +1,13 @@
+# Generated coverage reports
+coverage/
+
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# TypeScript
+*.d.ts

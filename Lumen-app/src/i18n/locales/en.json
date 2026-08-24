@@ -1,0 +1,21 @@
+{
+  "dashboard": {
+    "greeting_morning": "Good morning",
+    "greeting_afternoon": "Good afternoon",
+    "greeting_evening": "Good evening",
+    "quick_actions": "Quick Actions",
+    "recent_reports": "Recent Reports",
+    "nearby_issues": "Nearby Issues",
+    "report_issue": "Report Issue",
+    "my_reports": "My Reports",
+    "emergency": "Emergency",
+    "pay_bills": "Pay Bills",
+    "view_all": "View all",
+    "view_map": "View Map",
+    "live": "LIVE DASHBOARD"
+  },
+  "login": {
+    "welcome": "Welcome back",
+    "continue_guest": "Continue as Guest"
+  }
+}

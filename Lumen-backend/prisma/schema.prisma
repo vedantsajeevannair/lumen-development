@@ -1,0 +1,293 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+}
+
+enum Role {
+  CITIZEN
+  DEPARTMENT
+  SUPERVISOR
+  ENGINEER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum Department {
+  WATER
+  ROADS
+  ELECTRICITY
+  SANITATION
+  PARKS
+  POLICE
+  FIRE
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String?
+  role      Role     @default(CITIZEN)
+  phoneNumber String?
+  fullName  String?
+  isActive  Boolean  @default(true)
+  isVerified Boolean @default(false)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  verificationDocs Json?
+  biometricEnabled Boolean @default(false)
+  biometricHash    String?
+  isDeleted Boolean  @default(false)
+  civicScore Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  preferences       Json?
+  savedLocations    Json?
+  emergencyContacts Json?
+  fcmToken          String?
+
+  reportedComplaints Complaint[]         @relation("ReportedComplaints")
+  performedActions   ComplaintTimeline[] @relation("PerformedActions")
+  payments           PaymentTransaction[]
+  auditLogs          AuditLog[]
+  refreshTokens      RefreshToken[]
+  badges             UserBadge[]
+
+  @@map("users")
+}
+
+model Otp {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  otpHash      String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  fullName     String?
+  phoneNumber  String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+
+  @@map("otps")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ComplaintStatus {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REJECTED
+}
+
+
+enum MediaType {
+  ORIGINAL
+  PROCESSED
+  PROOF
+}
+
+model ComplaintMedia {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  storageKey  String
+  bucket      String
+  fileName    String
+  mimeType    String?
+  fileSize    Int?
+  mediaType   MediaType
+  createdAt   DateTime  @default(now())
+
+  @@map("complaint_media")
+}
+
+model Complaint {
+  id          String   @id @default(uuid())
+  trackingId  String   @unique
+  title       String
+  description String
+  category    String
+  priority    Priority @default(MEDIUM)
+  status      ComplaintStatus @default(PENDING)
+  isAnonymous Boolean @default(false)
+  
+  latitude    Float?
+  longitude   Float?
+  accuracy    Float?
+  capturedAt  DateTime?
+  
+  confidence  Float?
+  severity    Float?
+
+  imageUrl    String
+  videoUrl    String?
+  
+  reporterId  String?
+  reporter    User?     @relation("ReportedComplaints", fields: [reporterId], references: [id])
+
+  aiPrediction AiPrediction?
+
+  media       ComplaintMedia[]
+
+  timeline    ComplaintTimeline[]
+  dispatchRecords DispatchRecord[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("complaints")
+}
+
+model AiPrediction {
+  id              String      @id @default(uuid())
+  complaintId     String      @unique
+  complaint       Complaint   @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  damageClass     String
+  confidenceScore Float
+  boundingBoxes   Json        
+  metadata        Json        
+  status          String      
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("ai_predictions")
+}
+
+model ComplaintTimeline {
+  id          String   @id @default(uuid())
+  
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id])
+  
+  status      ComplaintStatus
+  notes       String?
+  
+  performedById String
+  performedBy   User     @relation("PerformedActions", fields: [performedById], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@map("complaint_timelines")
+}
+
+model Badge {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  description String
+  iconUrl     String?
+  users       UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(uuid())
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  action      String
+  entity      String
+  entityId    String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  details     Json?
+  
+  device      String?
+  os          String?
+  appVersion  String?
+  ipAddress   String?
+  gpsLocation Json?
+  status      String   @default("SUCCESS")
+  
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model DispatchRecord {
+  id          String   @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id])
+  
+  department  Department
+  assignedAt  DateTime @default(now())
+  estimatedResolutionAt DateTime?
+  
+  @@map("dispatch_records")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentType {
+  WATER_BILL
+  ELECTRICITY_BILL
+  PROPERTY_TAX
+  MISC
+}
+
+model PaymentTransaction {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  amount      Float
+  currency    String   @default("INR")
+  status      PaymentStatus @default(PENDING)
+  type        PaymentType
+  
+  receiptUrl  String?
+  transactionId String? @unique
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("payment_transactions")
+}
+
+                                              
