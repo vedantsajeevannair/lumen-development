@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -95,7 +99,9 @@ export class AiService {
 
       // 2. Strict Irrelevance Validation
       if (data.damageClass === 'UNKNOWN') {
-        throw new Error('it is not the valid photo for your complain upload it again with the photo related to it');
+        throw new Error(
+          'it is not the valid photo for your complain upload it again with the photo related to it',
+        );
       }
 
       this.logger.log(
@@ -214,8 +220,7 @@ export class AiService {
         { headers },
       ),
     );
-                                           
-                                            
+
     await this.aiRepository.updateComplaintWithAiResult(
       complaintId,
       response.data,

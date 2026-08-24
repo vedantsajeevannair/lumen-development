@@ -97,14 +97,6 @@ export class AiRepository {
       },
     });
 
-    try {
-      const { SyncService } = require('../sync/sync.service');
-      const syncService = new SyncService();
-      syncService.syncComplaintToWebDashboard(updatedComplaint);
-    } catch (e) {
-      this.logger.error('Failed to sync updated AI complaint to web dashboard', e);
-    }
-
     this.logger.log('Database updated');
   }
 }

@@ -4,19 +4,19 @@ import {
   IsString,
   IsNumber,
   IsOptional,
-  IsArray,                                    
+  IsArray,
   IsObject,
   IsEnum,
 } from 'class-validator';
 import { AI_PREDICTION_STATUS } from '../ai.constants';
 import type { BoundingBox, PredictionMetadata } from '../ai.types';
-                                             
+
 export class CreatePredictionDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
   complaintId: string;
-                                                  
+
   @ApiProperty()
   @IsString()
   @IsNotEmpty()

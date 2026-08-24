@@ -31,7 +31,9 @@ export class CitizenService {
       )?._count._all || 0;
     const pending = total - resolved;
 
-    const rawGraphData = await this.prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+    const rawGraphData = await this.prisma.$queryRaw<
+      { day: Date; count: bigint }[]
+    >`
       SELECT date_trunc('day', "createdAt") AS day, COUNT(*)::bigint AS count
       FROM complaints
       WHERE "reporterId" = ${userId} AND "createdAt" >= NOW() - INTERVAL '7 days'
@@ -55,7 +57,10 @@ export class CitizenService {
       }
     }
 
-    const graphData = Array.from(graphMap.entries()).map(([date, count]) => ({ date, count }));
+    const graphData = Array.from(graphMap.entries()).map(([date, count]) => ({
+      date,
+      count,
+    }));
 
     return { total, resolved, pending, statusBreakdown: complaints, graphData };
   }
@@ -87,7 +92,7 @@ export class CitizenService {
     allComplaints.forEach((c) => {
       // Status counts
       statusMap[c.status] = (statusMap[c.status] || 0) + 1;
-      
+
       if (c.status === 'RESOLVED' || c.status === 'CLOSED') {
         resolvedReports++;
       } else if (c.status === 'REJECTED') {
@@ -111,8 +116,12 @@ export class CitizenService {
       }
     });
 
-    const resolutionRate = totalReports > 0 ? Math.round((resolvedReports / totalReports) * 100) : 0;
-    const avgConfidence = totalAiProcessed > 0 ? Math.round((totalConfidence / totalAiProcessed) * 100) / 100 : null;
+    const resolutionRate =
+      totalReports > 0 ? Math.round((resolvedReports / totalReports) * 100) : 0;
+    const avgConfidence =
+      totalAiProcessed > 0
+        ? Math.round((totalConfidence / totalAiProcessed) * 100) / 100
+        : null;
 
     // Avg resolution time using timeline
     const avgResolutionRaw = await this.prisma.$queryRaw<{ avg_ms: bigint }[]>`
@@ -125,8 +134,13 @@ export class CitizenService {
     `;
 
     let avgResolutionHours: number | null = null;
-    if (avgResolutionRaw && avgResolutionRaw.length > 0 && avgResolutionRaw[0].avg_ms) {
-       avgResolutionHours = Math.round(Number(avgResolutionRaw[0].avg_ms) / 3600000 * 10) / 10;
+    if (
+      avgResolutionRaw &&
+      avgResolutionRaw.length > 0 &&
+      avgResolutionRaw[0].avg_ms
+    ) {
+      avgResolutionHours =
+        Math.round((Number(avgResolutionRaw[0].avg_ms) / 3600000) * 10) / 10;
     }
 
     // Trend calculation
@@ -145,54 +159,59 @@ export class CitizenService {
       submittedData.push(...Array(12).fill(0));
       resolvedData.push(...Array(12).fill(0));
 
-      allComplaints.forEach(c => {
-        const diffMonths = (now.getFullYear() - c.createdAt.getFullYear()) * 12 + now.getMonth() - c.createdAt.getMonth();
+      allComplaints.forEach((c) => {
+        const diffMonths =
+          (now.getFullYear() - c.createdAt.getFullYear()) * 12 +
+          now.getMonth() -
+          c.createdAt.getMonth();
         if (diffMonths >= 0 && diffMonths < 12) {
           const idx = 11 - diffMonths;
           submittedData[idx]++;
           if (c.status === 'RESOLVED' || c.status === 'CLOSED') {
-             resolvedData[idx]++;
+            resolvedData[idx]++;
           }
         }
       });
     } else if (rangeLower === 'monthly') {
-       trendLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-       submittedData.push(...Array(4).fill(0));
-       resolvedData.push(...Array(4).fill(0));
+      trendLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+      submittedData.push(...Array(4).fill(0));
+      resolvedData.push(...Array(4).fill(0));
 
-       allComplaints.forEach(c => {
-         const diffTime = now.getTime() - c.createdAt.getTime();
-         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-         // Fix: If a complaint is in the future (timezone), diffDays might be negative. Let's enforce >= 0
-         if (diffDays >= 0 && diffDays < 28) {
-           const week = 3 - Math.floor(diffDays / 7);
-           if (week >= 0 && week < 4) {
-             submittedData[week]++;
-             if (c.status === 'RESOLVED' || c.status === 'CLOSED') resolvedData[week]++;
-           }
-         }
-       });
+      allComplaints.forEach((c) => {
+        const diffTime = now.getTime() - c.createdAt.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        // Fix: If a complaint is in the future (timezone), diffDays might be negative. Let's enforce >= 0
+        if (diffDays >= 0 && diffDays < 28) {
+          const week = 3 - Math.floor(diffDays / 7);
+          if (week >= 0 && week < 4) {
+            submittedData[week]++;
+            if (c.status === 'RESOLVED' || c.status === 'CLOSED')
+              resolvedData[week]++;
+          }
+        }
+      });
     } else {
-       // Daily default
-       trendLabels = Array.from({ length: 7 }).map((_, i) => {
-         const d = new Date();
-         d.setDate(now.getDate() - (6 - i));
-         return d.toLocaleDateString('en-US', { weekday: 'short' });
-       });
-       submittedData.push(...Array(7).fill(0));
-       resolvedData.push(...Array(7).fill(0));
+      // Daily default
+      trendLabels = Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date();
+        d.setDate(now.getDate() - (6 - i));
+        return d.toLocaleDateString('en-US', { weekday: 'short' });
+      });
+      submittedData.push(...Array(7).fill(0));
+      resolvedData.push(...Array(7).fill(0));
 
-       allComplaints.forEach(c => {
-         const diffTime = now.getTime() - c.createdAt.getTime();
-         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-         if (diffDays >= 0 && diffDays < 7) {
-           const idx = 6 - diffDays;
-           if (idx >= 0 && idx < 7) {
-             submittedData[idx]++;
-             if (c.status === 'RESOLVED' || c.status === 'CLOSED') resolvedData[idx]++;
-           }
-         }
-       });
+      allComplaints.forEach((c) => {
+        const diffTime = now.getTime() - c.createdAt.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays < 7) {
+          const idx = 6 - diffDays;
+          if (idx >= 0 && idx < 7) {
+            submittedData[idx]++;
+            if (c.status === 'RESOLVED' || c.status === 'CLOSED')
+              resolvedData[idx]++;
+          }
+        }
+      });
     }
 
     return {
@@ -212,15 +231,22 @@ export class CitizenService {
         datasets: {
           submitted: submittedData,
           resolved: resolvedData,
-        }
+        },
       },
-      statusBreakdown: Object.entries(statusMap).map(([status, count]) => ({ status, count })),
-      categoryBreakdown: Object.entries(categoryMap).map(([category, count]) => ({ category, count })).sort((a,b) => b.count - a.count),
-      priorityBreakdown: Object.entries(priorityMap).map(([priority, count]) => ({ priority, count })),
+      statusBreakdown: Object.entries(statusMap).map(([status, count]) => ({
+        status,
+        count,
+      })),
+      categoryBreakdown: Object.entries(categoryMap)
+        .map(([category, count]) => ({ category, count }))
+        .sort((a, b) => b.count - a.count),
+      priorityBreakdown: Object.entries(priorityMap).map(
+        ([priority, count]) => ({ priority, count }),
+      ),
       aiInsights: {
         totalAiProcessed,
         avgConfidence,
-      }
+      },
     };
   }
 

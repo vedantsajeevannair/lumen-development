@@ -35,7 +35,6 @@ import { PaymentsModule } from './payments/payments.module';
 import { AiTriageModule } from './ai-triage/ai-triage.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { WebIntegrationModule } from './web-integration/web-integration.module';
-import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -147,7 +146,6 @@ import { SyncModule } from './sync/sync.module';
     AiTriageModule,
     GamificationModule,
     WebIntegrationModule,
-    SyncModule,
   ],
   controllers: [AppController],
   providers: [

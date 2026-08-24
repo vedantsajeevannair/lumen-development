@@ -1,23 +1,10 @@
 # dependencies
-**/node_modules/
+node_modules/
 # builds
-frontend/dist/
-backend/dist/
-# database (SQLite) — schema and seed are tracked, the data file is not
-database/*.db
-database/*.db-journal
-# uploads (user/demo images)
-backend/uploads/*
-!backend/uploads/.gitkeep
-# python
-backend/ai-service/__pycache__/
-backend/ai-service/runs/
-backend/ai-service/weights/*.pt
-backend/ai-service/data/
+dist/
 # env & logs
-**/.env
+.env
+.env.*
+!.env.example
 *.log
 .DS_Store
-
-# YOLO model weights (downloaded/trained, not source)
-**/*.pt

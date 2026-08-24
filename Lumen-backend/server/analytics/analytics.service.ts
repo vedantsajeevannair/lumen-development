@@ -79,9 +79,7 @@ export class AnalyticsService {
 
   async getComplaintTrend(days = 7) {
     // Returns daily complaint counts for the last N days
-    const results = await this.prisma.$queryRaw<
-      { day: Date; count: bigint }[]
-    >`
+    const results = await this.prisma.$queryRaw<{ day: Date; count: bigint }[]>`
       SELECT
         date_trunc('day', "createdAt") AS day,
         COUNT(*)::bigint AS count
@@ -99,12 +97,22 @@ export class AnalyticsService {
 
   async getDepartmentPerformance() {
     // Aggregate dispatch records to compute per-department resolution stats
-    const departments = ['WATER', 'ROADS', 'ELECTRICITY', 'SANITATION', 'PARKS', 'POLICE', 'FIRE'];
+    const departments = [
+      'WATER',
+      'ROADS',
+      'ELECTRICITY',
+      'SANITATION',
+      'PARKS',
+      'POLICE',
+      'FIRE',
+    ];
 
     const results = await Promise.all(
       departments.map(async (dept) => {
         const [total, resolved, inProgress] = await Promise.all([
-          this.prisma.dispatchRecord.count({ where: { department: dept as any } }),
+          this.prisma.dispatchRecord.count({
+            where: { department: dept as any },
+          }),
           this.prisma.dispatchRecord.count({
             where: {
               department: dept as any,
@@ -119,7 +127,8 @@ export class AnalyticsService {
           }),
         ]);
 
-        const completionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
+        const completionRate =
+          total > 0 ? Math.round((resolved / total) * 100) : 0;
         return {
           department: dept,
           total,
@@ -182,7 +191,8 @@ export class AnalyticsService {
 
     // Merge and sort by createdAt desc
     const merged = [...auditEntries, ...timelineEntries].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
     return merged.slice(0, limit);

@@ -458,9 +458,10 @@ export class WebIntegrationService implements OnModuleInit {
 
   private formatComplaint(c: ComplaintWithRelations) {
     const aiPred = c.aiPrediction;
-    const severityScore = c.severity !== null && c.severity !== undefined
-      ? c.severity * 20 // Map 0-5 to 0-100
-      : 35.0;
+    const severityScore =
+      c.severity !== null && c.severity !== undefined
+        ? c.severity * 20 // Map 0-5 to 0-100
+        : 35.0;
     let severityBand = 'MODERATE';
     if (severityScore >= 75) severityBand = 'SEVERE';
     else if (severityScore >= 50) severityBand = 'SIGNIFICANT';
@@ -540,16 +541,30 @@ export class WebIntegrationService implements OnModuleInit {
       lng: c.longitude || 77.5946,
       status: this.mapStatusToFrontend(c.status),
       priority: this.mapPriority(c.priority),
-      slaHours: c.priority === 'CRITICAL' ? 4 : c.priority === 'HIGH' ? 12 : c.priority === 'LOW' ? 72 : 48,
+      slaHours:
+        c.priority === 'CRITICAL'
+          ? 4
+          : c.priority === 'HIGH'
+            ? 12
+            : c.priority === 'LOW'
+              ? 72
+              : 48,
       createdAt: c.createdAt,
       aiModelMode: aiPred ? 'TRAINED' : 'NONE',
       aiConfidence: aiPred?.confidenceScore ?? null,
       detections: aiPred
         ? JSON.stringify(
-            Array.isArray(aiPred.boundingBoxes as unknown[]) &&
-            (aiPred.boundingBoxes as unknown[]).length > 0
+            Array.isArray(aiPred.boundingBoxes) &&
+              (aiPred.boundingBoxes as unknown[]).length > 0
               ? aiPred.boundingBoxes
-              : [{ label: aiPred.damageClass, confidence: aiPred.confidenceScore, box: [], area_ratio: null }],
+              : [
+                  {
+                    label: aiPred.damageClass,
+                    confidence: aiPred.confidenceScore,
+                    box: [],
+                    area_ratio: null,
+                  },
+                ],
           )
         : null,
       severityScore,
@@ -626,23 +641,29 @@ export class WebIntegrationService implements OnModuleInit {
     return { complaints: dbComplaints };
   }
   private getComplaintWhere(ref: string) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        ref,
+      );
     return isUuid ? { id: ref } : { trackingId: ref };
   }
 
   async getComplaintDetail(ref: string) {
-    const dbComplaint = await this.prisma.complaint.findFirst({
+    const dbComplaint = (await this.prisma.complaint.findFirst({
       where: this.getComplaintWhere(ref),
       include: {
         aiPrediction: true,
         dispatchRecords: true,
         reporter: { select: { fullName: true, email: true } },
-        timeline: { orderBy: { createdAt: 'asc' }, include: { performedBy: { select: { fullName: true } } } },
+        timeline: {
+          orderBy: { createdAt: 'asc' },
+          include: { performedBy: { select: { fullName: true } } },
+        },
       },
-    }) as any;
+    })) as any;
 
     if (!dbComplaint) throw new NotFoundException(`Complaint ${ref} not found`);
-    
+
     if (dbComplaint.aiPrediction) {
       try {
         let rawBoxes = dbComplaint.aiPrediction.boundingBoxes;
@@ -650,32 +671,35 @@ export class WebIntegrationService implements OnModuleInit {
           rawBoxes = JSON.parse(rawBoxes);
         }
 
-        const mappedBoxes = (Array.isArray(rawBoxes) ? rawBoxes : []).map((box: any) => {
-          if (Array.isArray(box)) return box;
-          if (box && typeof box === 'object') {
-            const xmin = box.xmin ?? 0;
-            const ymin = box.ymin ?? 0;
-            const xmax = box.xmax ?? 0;
-            const ymax = box.ymax ?? 0;
-            return [xmin, ymin, xmax - xmin, ymax - ymin];
-          }
-          return [0, 0, 0, 0];
-        });
+        const mappedBoxes = (Array.isArray(rawBoxes) ? rawBoxes : []).map(
+          (box: any) => {
+            if (Array.isArray(box)) return box;
+            if (box && typeof box === 'object') {
+              const xmin = box.xmin ?? 0;
+              const ymin = box.ymin ?? 0;
+              const xmax = box.xmax ?? 0;
+              const ymax = box.ymax ?? 0;
+              return [xmin, ymin, xmax - xmin, ymax - ymin];
+            }
+            return [0, 0, 0, 0];
+          },
+        );
 
-        (dbComplaint.aiPrediction as any).boundingBoxes = mappedBoxes;
+        dbComplaint.aiPrediction.boundingBoxes = mappedBoxes;
 
         let rawMeta = dbComplaint.aiPrediction.metadata;
         if (typeof rawMeta === 'string') {
           rawMeta = JSON.parse(rawMeta);
         }
-        
-        const metadataObj = (rawMeta && typeof rawMeta === 'object') ? { ...rawMeta } : {};
+
+        const metadataObj =
+          rawMeta && typeof rawMeta === 'object' ? { ...rawMeta } : {};
         if (!metadataObj.width) metadataObj.width = 640;
         if (!metadataObj.height) metadataObj.height = 640;
 
-        (dbComplaint.aiPrediction as any).metadata = metadataObj;
+        dbComplaint.aiPrediction.metadata = metadataObj;
       } catch (e) {
-        console.error("Failed to parse/map AI prediction:", e);
+        console.error('Failed to parse/map AI prediction:', e);
       }
     }
 

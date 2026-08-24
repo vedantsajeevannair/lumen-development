@@ -26,7 +26,7 @@ class PredictMediaDto {
 @UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {
-  constructor(private readonly aiService: AiService) { }
+  constructor(private readonly aiService: AiService) {}
 
   @Post('analyze-complaint')
   @ApiOperation({

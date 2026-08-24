@@ -14,8 +14,6 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { AiService } from '../ai/ai.service';
 import { StorageService } from '../common/storage/storage.service';
 
-import { SyncService } from '../sync/sync.service';
-
 @Injectable()
 export class ComplaintsService {
   private readonly logger = new Logger(ComplaintsService.name);
@@ -25,20 +23,26 @@ export class ComplaintsService {
     private notificationsGateway: NotificationsGateway,
     private aiService: AiService,
     private storageService: StorageService,
-    private syncService: SyncService,
   ) {}
 
   private async getNextTrackingId(tx?: any): Promise<string> {
     const prisma = tx || this.prisma;
     try {
       // Create sequence if it doesn't exist, starting from 10500 to guarantee no conflicts
-      await prisma.$executeRawUnsafe(`CREATE SEQUENCE IF NOT EXISTS complaint_tracking_seq START 10500`);
-      
-      const result: any = await prisma.$queryRawUnsafe(`SELECT nextval('complaint_tracking_seq') AS seq`);
+      await prisma.$executeRawUnsafe(
+        `CREATE SEQUENCE IF NOT EXISTS complaint_tracking_seq START 10500`,
+      );
+
+      const result: any = await prisma.$queryRawUnsafe(
+        `SELECT nextval('complaint_tracking_seq') AS seq`,
+      );
       const nextNumber = Number(result[0].seq);
       return `CMP-${nextNumber}`;
     } catch (error) {
-      this.logger.error('Failed to get sequence from database, falling back to count', error);
+      this.logger.error(
+        'Failed to get sequence from database, falling back to count',
+        error,
+      );
       const count = await prisma.complaint.count();
       return `CMP-${10500 + count}`;
     }
@@ -85,7 +89,9 @@ export class ComplaintsService {
         try {
           imageUrlForAi = await this.storageService.getSignedUrl(key);
         } catch (err) {
-          this.logger.warn(`Failed to sign image URL for AI validation: ${err.message}`);
+          this.logger.warn(
+            `Failed to sign image URL for AI validation: ${err.message}`,
+          );
         }
       }
 
@@ -158,18 +164,16 @@ export class ComplaintsService {
       });
 
       // Synchronously update the complaint with AI prediction results and sync to Web Dashboard
-      await this.aiService.updateComplaintWithAiResult(complaint.id, aiValidationResult);
+      await this.aiService.updateComplaintWithAiResult(
+        complaint.id,
+        aiValidationResult,
+      );
     }
 
     const finalComplaint = await this.prisma.complaint.findUnique({
       where: { id: complaint.id },
       include: { aiPrediction: true },
     });
-
-    // If AI validation wasn't run/successful, we still sync the initial complaint to the dashboard
-    if (finalComplaint && !aiValidationResult) {
-      this.syncService.syncComplaintToWebDashboard(finalComplaint);
-    }
 
     return finalComplaint;
   }
@@ -287,7 +291,10 @@ export class ComplaintsService {
 
     if (!complaint) {
       // If already deleted or doesn't exist, return success for idempotency
-      return { success: true, message: 'Complaint deleted successfully (already gone)' };
+      return {
+        success: true,
+        message: 'Complaint deleted successfully (already gone)',
+      };
     }
 
     // Citizens can only delete their own complaints; admins can delete any
