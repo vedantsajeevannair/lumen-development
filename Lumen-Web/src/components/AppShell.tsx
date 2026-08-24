@@ -3,7 +3,8 @@ import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut, Menu, ChevronDown } from "lucide-react";
 import { useAuth } from "../auth";
 import { useSocket } from "./SocketProvider";
-import { navForRole, ROLE_LABELS } from "../lib/rbac";
+import { navForRole, ROLE_LABELS, isStaff } from "../lib/rbac";
+import { NotificationBell } from "./NotificationBell";
 import { Sidebar } from "./Sidebar";
 import { Skeleton } from "./ui";
 
@@ -154,10 +155,13 @@ export function AppShell() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm text-slate-500">
               <span className="hidden sm:inline">Lumen City Municipal Corporation · </span>
-              <span className="font-semibold text-slate-800">Operational Command Center</span>
+              <span className="font-semibold text-slate-800">
+                {isStaff(user.role) ? "Operational Command Center" : "Citizen Services"}
+              </span>
             </p>
           </div>
 
+          <NotificationBell href={isStaff(user.role) ? "/app/audit-logs" : "/app/me/reports"} />
           <ConnectionPill />
           <div className="hidden h-6 w-px bg-slate-200 sm:block" />
           <UserMenu name={user.name} role={ROLE_LABELS[user.role] ?? user.role} onLogout={onLogout} />

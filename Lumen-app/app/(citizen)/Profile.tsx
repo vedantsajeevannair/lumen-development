@@ -1,1 +1,1 @@
-﻿export { default } from "@/features/citizen/screens/ProfileScreen";
+export { default } from "@/features/citizen/screens/ProfileScreen";

@@ -7,8 +7,6 @@ import {
   UseInterceptors,
   UploadedFile,
   ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
   HttpException,
   HttpStatus,
   Logger,

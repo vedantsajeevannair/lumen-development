@@ -1,1 +1,1 @@
-﻿export { default } from "@/features/maps/screens/MapScreen";
+export { default } from "@/features/maps/screens/MapScreen";

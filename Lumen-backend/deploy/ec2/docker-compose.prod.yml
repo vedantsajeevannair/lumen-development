@@ -1,0 +1,40 @@
+# EC2 deployment. Unlike the repo-root docker-compose.yml (which runs Postgres and
+# Redis as containers for local development), this expects managed AWS services:
+# RDS for Postgres and ElastiCache for Redis. Nothing stateful runs on the box.
+#
+#   cp .env.example .env && $EDITOR .env
+#   docker compose -f docker-compose.prod.yml run --rm api npm run migrate:deploy
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Credentials: attach an IAM instance profile granting S3 access and leave
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY unset — the SDK resolves the role.
+
+services:
+  api:
+    image: ${ECR_IMAGE:-lumen-backend:latest}
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Single instance here, so applying migrations at boot is safe. On more than
+      # one host, drop this and use the `run --rm` command above instead.
+      RUN_MIGRATIONS_ON_START: "true"
+    # Matches the readiness semantics used in Kubernetes: 503 while the database
+    # is unreachable, 200 when healthy or degraded.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    # Give the app time to drain on `docker compose down` / instance refresh.
+    stop_grace_period: 40s
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /lumen/backend
+        awslogs-create-group: "true"

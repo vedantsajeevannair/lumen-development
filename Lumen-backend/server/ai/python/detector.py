@@ -9,6 +9,7 @@ from ultralytics import YOLO
 from config import settings
 from postprocess import format_single_prediction, merge_video_predictions
 from preprocess import download_image_async, download_video_frames_async
+from model_source import ensure_model_available
 
 logger = logging.getLogger("uvicorn.error")
                                                 
@@ -43,7 +44,11 @@ class YOLODetector:
         
       
         try:
-            self.model = YOLO(settings.MODEL_PATH)
+            # Fetch the trained weights first when they are not in the image.
+            model_path = ensure_model_available(
+                settings.MODEL_PATH, settings.MODEL_S3_URI
+            )
+            self.model = YOLO(model_path)
             
           
             logger.info("Pre-warming YOLO model...")

@@ -19,14 +19,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import * as PrismaClient from '@prisma/client';
-import {
-  ApiBearerAuth,
-  ApiTags,
-  ApiOperation,
-  ApiConsumes,
-  ApiBody,
-} from '@nestjs/swagger';
-import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 
 @ApiTags('Complaints')
 @ApiBearerAuth()

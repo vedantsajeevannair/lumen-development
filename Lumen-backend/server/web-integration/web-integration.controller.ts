@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Body,
   UseGuards,
   Param,
@@ -16,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WebIntegrationService } from './web-integration.service';
 import { AuthenticationService } from '../authentication/authentication.service';
+import { RefreshTokenDto } from '../authentication/dto/refresh-token.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -33,6 +33,15 @@ export class WebIntegrationController {
       email: body.email,
       password: body.password,
     });
+  }
+
+  // Unauthenticated on purpose: the access token is already expired by the time
+  // the browser calls this. The refresh token itself is the credential, and it is
+  // single-use — authService.refreshTokens rotates it on every call.
+  @Post('auth/refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() body: RefreshTokenDto) {
+    return this.authService.refreshTokens(body);
   }
 
   @UseGuards(JwtAuthGuard)

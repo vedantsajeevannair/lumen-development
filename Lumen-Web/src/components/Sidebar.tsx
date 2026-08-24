@@ -1,19 +1,25 @@
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, ClipboardList, Route, Map, HardHat, ScrollText, Landmark, X,
+  BarChart3, Users, PlusCircle, Receipt, BadgeCheck, UserCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { NavItem } from "../lib/rbac";
 
 const ICONS: Record<string, LucideIcon> = {
   LayoutDashboard, ClipboardList, Route, Map, HardHat, ScrollText,
+  BarChart3, Users, PlusCircle, Receipt, BadgeCheck, UserCircle,
 };
 
 /** Grouping keeps the rail legible as the module list grows. */
 const GROUPS: { heading: string; keys: string[] }[] = [
+  // Citizen portal
+  { heading: "My Civic Account", keys: ["c-dashboard", "c-report", "c-reports", "c-analytics"] },
+  { heading: "Services", keys: ["c-payments", "c-identity", "c-profile"] },
+  // Operator console
   { heading: "Operations", keys: ["dashboard", "complaints", "assignment"] },
   { heading: "Field", keys: ["gis", "engineers"] },
-  { heading: "Governance", keys: ["audit-logs"] },
+  { heading: "Governance", keys: ["analytics", "users", "audit-logs"] },
 ];
 
 export function Sidebar({ items, roleLabel, open, onClose }: {

@@ -84,16 +84,13 @@ export class AiRepository {
       else if (result.severity > 3) priority = 'HIGH';
     }
 
-    const updatedComplaint = await this.prisma.complaint.update({
+    await this.prisma.complaint.update({
       where: { id: complaintId },
       data: {
         category: result.damageClass,
         confidence: result.confidenceScore,
         severity: result.severity,
         priority,
-      },
-      include: {
-        aiPrediction: true,
       },
     });
 

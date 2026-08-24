@@ -2,7 +2,15 @@ export const ROLE_LABELS: Record<string, string> = {
   ADMINISTRATOR: "Administrator",
   SUPERVISOR: "Supervisor",
   ENGINEER: "Field Engineer",
+  DEPARTMENT: "Department",
+  CITIZEN: "Citizen",
 };
+
+/** Staff roles see the operator console; citizens see the self-service portal.
+ *  Mirrors how the mobile app routes ADMIN/SUPER_ADMIN vs everyone else. */
+export const STAFF_ROLES = ["ADMINISTRATOR", "SUPERVISOR", "ENGINEER", "DEPARTMENT"];
+export const isStaff = (role?: string | null) => STAFF_ROLES.includes(role ?? "");
+export const isCitizen = (role?: string | null) => role === "CITIZEN";
 
 export const ALL_ROLES = Object.keys(ROLE_LABELS);
 
@@ -15,11 +23,23 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { key: "dashboard", label: "Dashboard", href: "/app/dashboard", icon: "LayoutDashboard", roles: ALL_ROLES },
-  { key: "complaints", label: "Complaints", href: "/app/complaints", icon: "ClipboardList", roles: ALL_ROLES },
+  // --- citizen portal -------------------------------------------------------
+  { key: "c-dashboard", label: "Overview", href: "/app/me", icon: "LayoutDashboard", roles: ["CITIZEN"] },
+  { key: "c-report", label: "Report an Issue", href: "/app/me/report", icon: "PlusCircle", roles: ["CITIZEN"] },
+  { key: "c-reports", label: "My Reports", href: "/app/me/reports", icon: "ClipboardList", roles: ["CITIZEN"] },
+  { key: "c-analytics", label: "My Impact", href: "/app/me/analytics", icon: "BarChart3", roles: ["CITIZEN"] },
+  { key: "c-payments", label: "Municipal Bills", href: "/app/me/payments", icon: "Receipt", roles: ["CITIZEN"] },
+  { key: "c-identity", label: "Identity", href: "/app/me/identity", icon: "BadgeCheck", roles: ["CITIZEN"] },
+  { key: "c-profile", label: "Profile", href: "/app/me/profile", icon: "UserCircle", roles: ["CITIZEN"] },
+
+  // --- operator console -----------------------------------------------------
+  { key: "dashboard", label: "Dashboard", href: "/app/dashboard", icon: "LayoutDashboard", roles: STAFF_ROLES },
+  { key: "complaints", label: "Complaints", href: "/app/complaints", icon: "ClipboardList", roles: STAFF_ROLES },
   { key: "assignment", label: "Assignment Optimiser", href: "/app/assignment", icon: "Route", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
-  { key: "gis", label: "GIS Map", href: "/app/gis", icon: "Map", roles: ALL_ROLES },
+  { key: "gis", label: "GIS Map", href: "/app/gis", icon: "Map", roles: STAFF_ROLES },
   { key: "engineers", label: "Engineers", href: "/app/engineers", icon: "HardHat", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
+  { key: "analytics", label: "Analytics", href: "/app/analytics", icon: "BarChart3", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
+  { key: "users", label: "Users", href: "/app/users", icon: "Users", roles: ["ADMINISTRATOR"] },
   { key: "audit-logs", label: "Audit Log", href: "/app/audit-logs", icon: "ScrollText", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
 ];
 

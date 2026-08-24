@@ -47,8 +47,7 @@ export default function RootLayout() {
     const isAuthRoute =
       segments.includes("welcome") ||
       segments.includes("(auth)") ||
-      segments.includes("onboarding") ||
-      segments.includes("landing");
+      segments.includes("onboarding");
     const isCitizenRoute = segments.includes("(citizen)");
     const isAdminRoute = segments.includes("(admin)");
 

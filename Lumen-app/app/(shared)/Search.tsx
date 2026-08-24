@@ -1,1 +1,1 @@
-﻿export { default } from "@/features/shared/screens/SearchScreen";
+export { default } from "@/features/shared/screens/SearchScreen";

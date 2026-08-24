@@ -1,4 +1,4 @@
-import { authApiService } from "../../src/features/auth/services";
+import { authApiService } from "../../src/auth/services";
 
 describe("Authentication Integration Flow", () => {
   it("authenticates a user login command and returns standard role identities", async () => {

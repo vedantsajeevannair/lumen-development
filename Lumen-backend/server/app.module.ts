@@ -86,9 +86,13 @@ import { WebIntegrationModule } from './web-integration/web-integration.module';
             const parsed = new URL(redisUrl);
             connectionOptions = {
               host: parsed.hostname,
-              port: parseInt(parsed.port, 10),
+              port: parseInt(parsed.port, 10) || 6379,
               username: parsed.username || undefined,
               password: parsed.password || undefined,
+              // Managed Redis (Render, Upstash, ElastiCache in-transit) uses
+              // rediss://. Dropping this leaves the connection plaintext and it
+              // is refused by the server.
+              ...(parsed.protocol === 'rediss:' ? { tls: {} } : {}),
             };
           } catch (e) {
             // Fallback if parsing fails

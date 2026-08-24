@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import secrets
 import json
 import time
 import sys
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -61,14 +62,33 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Enable CORS for external access from frontends
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# This service is called server-to-server by the LUMEN backend, not by browsers,
+# so CORS defaults to closed. Set CORS_ORIGINS only if something in a browser
+# genuinely needs direct access.
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def require_api_key(request: Request) -> None:
+    """Reject calls that do not carry the shared secret.
+
+    The backend already sends `Authorization: Bearer $FASTAPI_API_KEY`; this
+    makes the service actually check it. No key configured means no check, which
+    is only safe when the service is unreachable from outside the cluster/VPC.
+    """
+    if not settings.API_KEY:
+        return
+    header = request.headers.get("authorization", "")
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    if not secrets.compare_digest(token, settings.API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
 @app.get("/health")
 def health_check():
@@ -83,7 +103,7 @@ def health_check():
         "max_batch_size": settings.MAX_BATCH_SIZE
     }
 
-@app.post("/detect/image")
+@app.post("/detect/image", dependencies=[Depends(require_api_key)])
 async def detect_image(req: DetectRequest):
     if not req.url:
         raise HTTPException(status_code=400, detail="Invalid request: 'url' parameter is required.")
@@ -116,7 +136,7 @@ async def detect_image(req: DetectRequest):
         logger.critical(f"Unexpected error during image inference: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Inference engine failure: {str(e)}")
 
-@app.post("/detect/video")
+@app.post("/detect/video", dependencies=[Depends(require_api_key)])
 async def detect_video(req: DetectRequest):
     if not req.url:
         raise HTTPException(status_code=400, detail="Invalid request: 'url' parameter is required.")

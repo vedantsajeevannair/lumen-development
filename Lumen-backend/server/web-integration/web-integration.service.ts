@@ -4,6 +4,7 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { complaintDerivations, severityPercent } from '../common/derivations';
 import { PrismaService } from '../database/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -458,14 +459,12 @@ export class WebIntegrationService implements OnModuleInit {
 
   private formatComplaint(c: ComplaintWithRelations) {
     const aiPred = c.aiPrediction;
-    const severityScore =
-      c.severity !== null && c.severity !== undefined
-        ? c.severity * 20 // Map 0-5 to 0-100
-        : 35.0;
-    let severityBand = 'MODERATE';
-    if (severityScore >= 75) severityBand = 'SEVERE';
-    else if (severityScore >= 50) severityBand = 'SIGNIFICANT';
-    else if (severityScore < 20) severityBand = 'MINOR';
+    // severityScore is exposed on a 0-100 scale for display; the band comes from
+    // the shared helper so it agrees with the priority thresholds in
+    // ai/ai.repository.ts and with every other endpoint.
+    const severityScore = severityPercent(c.severity);
+    const derived = complaintDerivations(c);
+    const severityBand = derived.severityBand;
 
     // Use the actual dispatched department if available
     const deptName = c.dispatchRecords?.[0]?.department || 'UNASSIGNED';
@@ -638,7 +637,16 @@ export class WebIntegrationService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
     });
 
-    return { complaints: dbComplaints };
+    // Attach the derived severity band / SLA state here so every client just
+    // renders them. Previously the list returned raw 0-5 severity with no band,
+    // while the detail endpoint returned a 0-100 score — the same field on two
+    // different scales.
+    return {
+      complaints: dbComplaints.map((c) => ({
+        ...c,
+        ...complaintDerivations(c),
+      })),
+    };
   }
   private getComplaintWhere(ref: string) {
     const isUuid =

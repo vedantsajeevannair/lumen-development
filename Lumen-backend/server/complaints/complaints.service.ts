@@ -9,7 +9,7 @@ import { PrismaService } from '../database/prisma.service';
 import { CreateComplaintDto } from './dto/create-complaint.dto';
 import { UpdateComplaintDto } from './dto/update-complaint.dto';
 import { SyncComplaintsDto } from './dto/sync-complaints.dto';
-import type { User, Complaint } from '@prisma/client';
+import type { User, Complaint, Prisma } from '@prisma/client';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { AiService } from '../ai/ai.service';
 import { StorageService } from '../common/storage/storage.service';
@@ -25,15 +25,17 @@ export class ComplaintsService {
     private storageService: StorageService,
   ) {}
 
-  private async getNextTrackingId(tx?: any): Promise<string> {
-    const prisma = tx || this.prisma;
+  private async getNextTrackingId(
+    tx?: Prisma.TransactionClient,
+  ): Promise<string> {
+    const prisma = tx ?? this.prisma;
     try {
       // Create sequence if it doesn't exist, starting from 10500 to guarantee no conflicts
       await prisma.$executeRawUnsafe(
         `CREATE SEQUENCE IF NOT EXISTS complaint_tracking_seq START 10500`,
       );
 
-      const result: any = await prisma.$queryRawUnsafe(
+      const result = await prisma.$queryRawUnsafe<{ seq: bigint }[]>(
         `SELECT nextval('complaint_tracking_seq') AS seq`,
       );
       const nextNumber = Number(result[0].seq);

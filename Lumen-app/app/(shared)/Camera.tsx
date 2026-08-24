@@ -1,1 +1,1 @@
-﻿export { default } from "@/features/camera/screens/CameraScreen";
+export { default } from "@/features/camera/screens/CameraScreen";

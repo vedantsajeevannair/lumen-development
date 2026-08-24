@@ -1,0 +1,110 @@
+# LUMEN AI inference service (FastAPI + YOLO).
+#
+# Deliberately ClusterIP only — it is NOT exposed through the ALB Ingress. The
+# backend is its only client, over the cluster network. The shared API key is a
+# second layer, not the primary control.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lumen-ai
+  annotations:
+    # Needs s3:GetObject on the model object only — see MODEL_S3_URI below.
+    eks.amazonaws.com/role-arn: arn:aws:iam::000000000000:role/lumen-ai-model-read
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lumen-ai-config
+data:
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  MODEL_PATH: "/app/models/best.pt"
+  # Your trained weights. Upload once, then roll the Deployment to pick up a
+  # retrained model — no image rebuild needed.
+  MODEL_S3_URI: "s3://lumen-smartcity-storage/models/best.pt"
+  CONFIDENCE_THRESHOLD: "0.60"
+  DEVICE: "cpu"
+  TORCH_NUM_THREADS: "4"
+  PREVENT_SSRF: "True"
+  BLUR_THRESHOLD: "100.0"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumen-ai
+  labels: { app: lumen-ai }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: lumen-ai }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app: lumen-ai }
+    spec:
+      serviceAccountName: lumen-ai
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: ai
+          image: <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com/lumen-ai:latest
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef: { name: lumen-ai-config }
+          env:
+            # Must match FASTAPI_API_KEY in the backend's secret.
+            - name: FASTAPI_API_KEY
+              valueFrom:
+                secretKeyRef: { name: lumen-ai-secrets, key: FASTAPI_API_KEY }
+          # Model download + YOLO warm-up happens before the server accepts
+          # traffic, and on a cold node that is slow. The startup probe buys up
+          # to 5 minutes; liveness only takes over once it has passed.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            # YOLO inference is CPU- and memory-hungry; tune against your model.
+            requests: { cpu: "1", memory: "2Gi" }
+            limits: { cpu: "2", memory: "4Gi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: model-cache
+              mountPath: /app/models
+      volumes:
+        # emptyDir: the model is re-fetched from S3 on each pod start. Swap for a
+        # PVC if the download time on scale-out becomes a problem.
+        - name: model-cache
+          emptyDir: { sizeLimit: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumen-ai
+  labels: { app: lumen-ai }
+spec:
+  type: ClusterIP
+  selector: { app: lumen-ai }
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

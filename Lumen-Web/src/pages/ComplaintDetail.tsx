@@ -29,6 +29,7 @@ type Complaint = {
   id: string; trackingId: string; title: string; description: string; category: string;
   latitude: number; longitude: number; status: string; priority: string; createdAt: string;
   severity: number | null; confidence: number | null;
+  severityBand: string | null; severityPercent: number | null; slaStatus: string | null;
   imageUrl: string; videoUrl: string | null;
   reporter: { fullName: string } | null;
   aiPrediction: AiPrediction | null;
@@ -252,7 +253,7 @@ export function ComplaintDetail() {
                 <span className="tnum text-2xl font-black tracking-tight text-slate-800">{c.severity ?? "—"}</span>
               </div>
               <div className="min-w-0 flex-1">
-                <SeverityMeter score={c.severity} band={c.severity && c.severity > 3 ? "SEVERE" : "MODERATE"} />
+                <SeverityMeter score={c.severity} band={c.severityBand} percent={c.severityPercent} />
                 <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
                   Determined by LUMEN Vision
                 </p>

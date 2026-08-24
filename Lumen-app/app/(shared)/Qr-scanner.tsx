@@ -1,1 +1,1 @@
-﻿export { default } from "@/features/shared/screens/QrScannerScreen";
+export { default } from "@/features/shared/screens/QrScannerScreen";

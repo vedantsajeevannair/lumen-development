@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumen-backend
+  labels: { app: lumen-backend }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app: lumen-backend }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app: lumen-backend }
+    spec:
+      serviceAccountName: lumen-backend
+      # Long enough for in-flight requests to finish after SIGTERM. The app now
+      # calls enableShutdownHooks(), and tini forwards the signal, so Nest closes
+      # the server and disconnects Prisma before the process exits.
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: api
+          image: <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com/lumen-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef: { name: lumen-backend-config }
+            - secretRef: { name: lumen-backend-secrets }
+          # Readiness gates traffic on the database: /api/v1/health returns 503
+          # when Postgres is unreachable, 200 when healthy or merely degraded
+          # (Redis down — the app falls back to an in-memory cache by design).
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Liveness deliberately hits a trivial route. Pointing it at the
+          # dependency check would restart healthy pods during a database blip.
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1Gi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities: { drop: ["ALL"] }

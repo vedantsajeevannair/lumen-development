@@ -24,33 +24,48 @@ export class StorageService {
 
   constructor(private readonly configService: ConfigService) {
     const region = this.configService.get<string>('AWS_REGION')!;
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID')!;
+    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
     const secretAccessKey = this.configService.get<string>(
       'AWS_SECRET_ACCESS_KEY',
-    )!;
+    );
     this.bucketName = this.configService.get<string>('AWS_BUCKET_NAME')!;
 
-    if (!region || !accessKeyId || !secretAccessKey || !this.bucketName) {
+    // Region and bucket are always required. Credentials are NOT: on EC2, ECS or
+    // EKS the SDK resolves them from the instance profile / task role / IRSA via
+    // its default provider chain. Demanding static keys here would make the
+    // recommended IAM-role setup fail at startup.
+    if (!region || !this.bucketName) {
       if (process.env.NODE_ENV === 'production') {
         this.logger.error(
-          'CRITICAL: AWS credentials or bucket name are missing in production environment',
+          'CRITICAL: AWS_REGION or AWS_BUCKET_NAME is missing in production',
         );
         throw new InternalServerErrorException(
-          'AWS S3 credentials are strictly required in production',
-        );
-      } else {
-        this.logger.warn(
-          'AWS credentials or bucket name are not fully configured. S3 file operations will fail.',
+          'AWS_REGION and AWS_BUCKET_NAME are required',
         );
       }
+      this.logger.warn(
+        'AWS region or bucket name is not configured. S3 file operations will fail.',
+      );
     }
+
+    const usingStaticKeys = Boolean(accessKeyId && secretAccessKey);
+    this.logger.log(
+      usingStaticKeys
+        ? 'S3 client using static credentials from the environment'
+        : 'S3 client using the AWS default credential provider chain (IAM role)',
+    );
 
     this.s3Client = new S3Client({
       region,
-      credentials: {
-        accessKeyId,
-        secretAccessKey,
-      },
+      // Omitting `credentials` entirely is what lets the provider chain run.
+      ...(usingStaticKeys
+        ? {
+            credentials: {
+              accessKeyId: accessKeyId!,
+              secretAccessKey: secretAccessKey!,
+            },
+          }
+        : {}),
       maxAttempts: 3,
     });
   }

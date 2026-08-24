@@ -28,14 +28,3 @@ export function ageOf(d: Date | string): string {
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
-
-// SLA status per Part 8: Green on-track, Amber within 20% of deadline, Red breached.
-export function slaStatus(createdAt: Date | string, slaHours: number, closedAt?: Date | string | null): "ON_TRACK" | "AT_RISK" | "BREACHED" | "MET" {
-  const start = new Date(createdAt).getTime();
-  const deadline = start + slaHours * 3600000;
-  const ref = closedAt ? new Date(closedAt).getTime() : Date.now();
-  if (closedAt) return ref <= deadline ? "MET" : "BREACHED";
-  if (ref > deadline) return "BREACHED";
-  if (ref > deadline - slaHours * 3600000 * 0.2) return "AT_RISK";
-  return "ON_TRACK";
-}

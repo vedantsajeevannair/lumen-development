@@ -71,17 +71,17 @@ export function Landing() {
 
           <div className="mt-10 flex flex-wrap items-center gap-3">
             <Link
-              to="/auth/login"
+              to="/auth/register"
               className="group inline-flex h-12 items-center gap-2 rounded-xl bg-white px-6 text-sm font-bold text-brand-900 shadow-lift transition hover:bg-brand-50"
             >
-              Open the Command Center
+              Report an Issue
               <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
             </Link>
             <Link
-              to="/features"
+              to="/auth/login"
               className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/20 px-6 text-sm font-semibold text-white backdrop-blur transition hover:border-white/35 hover:bg-white/10"
             >
-              Explore the Pipeline
+              Sign in
             </Link>
           </div>
 
@@ -184,16 +184,16 @@ export function Landing() {
             style={{ background: "radial-gradient(500px 260px at 50% 0%, rgb(85 109 243 / 0.4), transparent 70%)" }}
           />
           <div className="relative">
-            <h2 className="text-[32px] font-bold tracking-[-0.02em]">See it detect a pothole</h2>
+            <h2 className="text-[32px] font-bold tracking-[-0.02em]">Spotted something broken?</h2>
             <p className="mx-auto mt-4 max-w-xl leading-relaxed text-brand-100/75">
-              Sign in and upload a road photo — the model draws the box, scores it, and routes it
-              to the right engineer.
+              Photograph it and we'll do the rest — the model draws the box, scores the severity,
+              and routes it to the right engineer. You can track every step.
             </p>
             <Link
-              to="/auth/login"
+              to="/auth/register"
               className="group mt-9 inline-flex h-12 items-center gap-2 rounded-xl bg-white px-6 text-sm font-bold text-brand-900 shadow-lift transition hover:bg-brand-50"
             >
-              Staff Login
+              Report an Issue
               <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
             </Link>
           </div>

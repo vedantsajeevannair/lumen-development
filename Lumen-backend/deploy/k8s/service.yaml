@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumen-backend
+  labels: { app: lumen-backend }
+spec:
+  type: ClusterIP
+  selector: { app: lumen-backend }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Exposes the service through an AWS Application Load Balancer.
+# Requires the AWS Load Balancer Controller to be installed in the cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lumen-backend
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /api/v1/health
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<REGION>:<ACCOUNT>:certificate/<ID>
+spec:
+  ingressClassName: alb
+  rules:
+    - host: api.lumen.example.gov
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lumen-backend
+                port: { name: http }

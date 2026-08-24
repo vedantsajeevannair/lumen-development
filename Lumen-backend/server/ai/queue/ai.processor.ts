@@ -1,11 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
-import {
-  AI_PROCESSING_QUEUE,
-  AI_JOB_NAMES,
-  AI_PREDICTION_STATUS,
-} from '../ai.constants';
+import { AI_PROCESSING_QUEUE, AI_JOB_NAMES } from '../ai.constants';
 import { AiService } from '../ai.service';
 
 @Processor(AI_PROCESSING_QUEUE)

@@ -1,1 +1,1 @@
-export { default } from "@/features/auth/screens/VerifyOtpScreen";
+export { default } from "@/auth/screens/VerifyOtpScreen";

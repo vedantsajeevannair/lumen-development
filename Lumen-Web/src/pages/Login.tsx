@@ -24,7 +24,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!loading && user) return <Navigate to="/app/dashboard" replace />;
+  if (!loading && user) return <Navigate to="/app" replace />;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,7 +32,8 @@ export function Login() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/app/dashboard");
+      // RoleHome routes staff to the console and citizens to their portal.
+      navigate("/app");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -100,9 +101,9 @@ export function Login() {
           </Link>
 
           <div className="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-lift">
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Staff Sign In</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">Sign In</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Access is limited to authorized government personnel.
+              Citizens and municipal staff sign in here.
             </p>
 
             <form onSubmit={submit} className="mt-7 space-y-4">
@@ -125,6 +126,12 @@ export function Login() {
                 />
               </Field>
 
+              <div className="flex justify-end -mt-1">
+                <Link to="/auth/forgot-password" className="text-xs font-semibold text-brand-700 transition hover:text-brand-800">
+                  Forgot your password?
+                </Link>
+              </div>
+
               {error && <Alert tone="danger" icon={AlertTriangle}>{error}</Alert>}
 
               <Button type="submit" busy={busy} size="lg" className="w-full">
@@ -133,7 +140,14 @@ export function Login() {
               </Button>
             </form>
 
-            <div className="mt-7 border-t border-slate-100 pt-5">
+            <p className="mt-6 border-t border-slate-100 pt-5 text-center text-sm text-slate-500">
+              New here?{" "}
+              <Link to="/auth/register" className="font-semibold text-brand-700 hover:text-brand-800">
+                Create a citizen account
+              </Link>
+            </p>
+
+            <div className="mt-5 border-t border-slate-100 pt-5">
               <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
                 Demo accounts — password <span className="font-mono text-slate-500">lumen123</span>
               </p>

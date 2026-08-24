@@ -1,0 +1,27 @@
+# Run once per release, BEFORE rolling the Deployment:
+#   kubectl apply -f deploy/k8s/migrate-job.yaml
+#   kubectl wait --for=condition=complete job/lumen-migrate --timeout=300s
+#
+# Kept out of the pod entrypoint on purpose: with several replicas every pod
+# would race on the same migration and contend on Prisma's advisory lock.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lumen-migrate
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: lumen-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: migrate
+          image: <ACCOUNT>.dkr.ecr.<REGION>.amazonaws.com/lumen-backend:latest
+          command: ["npx", "prisma", "migrate", "deploy"]
+          envFrom:
+            - configMapRef: { name: lumen-backend-config }
+            - secretRef: { name: lumen-backend-secrets }

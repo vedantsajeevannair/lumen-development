@@ -1,1 +1,1 @@
-﻿export { default } from "@/features/citizen/screens/NotificationsScreen";
+export { default } from "@/features/citizen/screens/NotificationsScreen";

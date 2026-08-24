@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PayBillDto } from './dto/pay-bill.dto';
-import type { User, PaymentType } from '@prisma/client';
+import type { User } from '@prisma/client';
 import Stripe from 'stripe';
 
 @Injectable()

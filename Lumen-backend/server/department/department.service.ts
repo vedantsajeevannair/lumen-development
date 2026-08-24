@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { AllocateEngineerDto } from './dto/allocate-engineer.dto';
 import { UpdateZoneDto } from './dto/update-zone.dto';
 import { ComplaintStatus } from '@prisma/client';
 

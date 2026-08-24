@@ -53,9 +53,15 @@ export function PublicLayout() {
           <div className="flex items-center gap-2">
             <Link
               to="/auth/login"
+              className="hidden h-10 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/auth/register"
               className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-brand-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-800"
             >
-              Staff Login
+              Report an Issue
             </Link>
             <button
               onClick={() => setOpen((v) => !v)}
@@ -126,10 +132,10 @@ export function PublicLayout() {
             </div>
 
             <Link
-              to="/auth/login"
+              to="/auth/register"
               className="inline-flex h-10 shrink-0 items-center gap-1.5 self-start rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-brand-300 hover:text-brand-700"
             >
-              Staff Login <ArrowRight size={15} />
+              Report an Issue <ArrowRight size={15} />
             </Link>
           </div>
 

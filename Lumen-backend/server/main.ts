@@ -13,14 +13,24 @@ async function bootstrap() {
   app.use(helmet());
 
   // 2. CORS
+  // FRONTEND_URL accepts a comma-separated list so the hosted web app and the
+  // local dev origins can be allowed at the same time. Native mobile builds send
+  // no Origin header and are unaffected by this list.
+  const allowedOrigins = (process.env.FRONTEND_URL ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || [
-      'http://localhost:5173',
-      'http://localhost:8081',
-      'http://localhost:19006',
-      'exp://10.24.81.55:8081',
-      'http://10.24.81.55:8081',
-    ],
+    origin: allowedOrigins.length
+      ? allowedOrigins
+      : [
+          'http://localhost:5173',
+          'http://localhost:8081',
+          'http://localhost:19006',
+          'exp://10.24.81.55:8081',
+          'http://10.24.81.55:8081',
+        ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -51,7 +61,13 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // 7. Start Server
+  // 7. Graceful shutdown
+  // Without this Nest never runs onModuleDestroy, so PrismaService.$disconnect()
+  // is skipped and SIGTERM (rolling deploy, scale-in, node drain) tears the
+  // container down with connections still open mid-request.
+  app.enableShutdownHooks();
+
+  // 8. Start Server
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
   console.log(`LUMEN Backend is running on port ${port}`);

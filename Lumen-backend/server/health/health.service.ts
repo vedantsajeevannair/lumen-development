@@ -55,7 +55,11 @@ export class HealthService {
     const responseTime = Date.now() - startTime;
 
     return {
-      status: db.status === 'up' && redis.status === 'up' ? 'up' : 'down',
+      // The database is the only hard dependency: without Redis the cache falls
+      // back to memory and queues run offline, so that is 'degraded', not 'down'.
+      // Probes key off this — see the controller, which maps 'down' to HTTP 503.
+      status:
+        db.status !== 'up' ? 'down' : redis.status === 'up' ? 'up' : 'degraded',
       timestamp: new Date().toISOString(),
       responseTime: `${responseTime}ms`,
       services: {

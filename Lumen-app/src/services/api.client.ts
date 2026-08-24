@@ -70,7 +70,11 @@ apiClient.interceptors.response.use(
 
       const session = useAuthStore.getState().session;
       if (!session?.refresh_token) {
-        // No refresh token available, force logout
+        // No refresh token available, force logout. Clear isRefreshing and drain
+        // the queue on the way out — otherwise the flag stays true for the life of
+        // the app and every later 401 is parked in failedQueue and never settled.
+        isRefreshing = false;
+        processQueue(error, null);
         useAuthStore.getState().logout();
         return Promise.reject(error);
       }

@@ -41,3 +41,6 @@ node_modules/
 *.jpg
 *.png
 *.tiff
+
+# macOS
+.DS_Store

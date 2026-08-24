@@ -15,6 +15,9 @@ type Complaint = {
   title: string;
   category: string;
   severity: number | null;
+  severityBand: string | null;
+  severityPercent: number | null;
+  slaStatus: string | null;
   confidence: number | null;
   priority: string;
   status: string;
@@ -30,7 +33,15 @@ export function Complaints() {
   const q = params.get("q") ?? "";
   const [search, setSearch] = useState(q);
 
-  const { data: complaintsData, loading, error, reload } = useApi<{ complaints: Complaint[] }>("/complaints");
+  // Filtering is the server's job — /api/complaints accepts status and q. The
+  // client used to fetch every complaint and filter in JS, which duplicated the
+  // backend's matching rules and would not survive a real dataset.
+  const query = new URLSearchParams();
+  if (statusFilter) query.set("status", statusFilter);
+  if (q) query.set("q", q);
+  const qs = query.toString();
+  const { data: complaintsData, loading, error, reload } =
+    useApi<{ complaints: Complaint[] }>(`/complaints${qs ? `?${qs}` : ""}`);
   const { socket } = useSocket();
 
   useEffect(() => {
@@ -59,22 +70,8 @@ export function Complaints() {
   };
   const clearAll = () => { setSearch(""); setParams(new URLSearchParams()); };
 
-  const allComplaints = complaintsData?.complaints ?? [];
-  const complaints = allComplaints.filter((c) => {
-    if (statusFilter && c.status !== statusFilter) return false;
-    if (search
-      && !c.trackingId.toLowerCase().includes(search.toLowerCase())
-      && !c.title.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  // Counts per status drive the pill badges, so filters show their yield up front.
-  const counts = allComplaints.reduce<Record<string, number>>((acc, c) => {
-    acc[c.status] = (acc[c.status] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const isFiltered = Boolean(statusFilter || search);
+  const complaints = complaintsData?.complaints ?? [];
+  const isFiltered = Boolean(statusFilter || q);
 
   const pill = (active: boolean) =>
     `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${
@@ -91,7 +88,7 @@ export function Complaints() {
         subtitle={
           loading
             ? "Loading the queue…"
-            : `${complaints.length} of ${allComplaints.length} complaint${allComplaints.length === 1 ? "" : "s"}, ranked by AI severity`
+            : `${complaints.length} complaint${complaints.length === 1 ? "" : "s"}${isFiltered ? " matching your filters" : ""}, ranked by AI severity`
         }
         action={canCreate ? <ButtonLink to="/app/complaints/new" icon={Plus}>New Complaint</ButtonLink> : undefined}
       />
@@ -114,20 +111,10 @@ export function Complaints() {
 
           <div className="flex flex-wrap items-center gap-1.5">
             <SlidersHorizontal size={14} className="mr-0.5 hidden text-slate-400 sm:block" />
-            <button onClick={() => setStatus("")} className={pill(!statusFilter)}>
-              All
-              <span className={`tnum rounded px-1 text-[10px] ${!statusFilter ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
-                {allComplaints.length}
-              </span>
-            </button>
+            <button onClick={() => setStatus("")} className={pill(!statusFilter)}>All</button>
             {Object.keys(STATUS_LABELS).map((s) => (
               <button key={s} onClick={() => setStatus(statusFilter === s ? "" : s)} className={pill(statusFilter === s)}>
                 {STATUS_LABELS[s]}
-                {counts[s] ? (
-                  <span className={`tnum rounded px-1 text-[10px] ${statusFilter === s ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>
-                    {counts[s]}
-                  </span>
-                ) : null}
               </button>
             ))}
           </div>
@@ -193,7 +180,7 @@ export function Complaints() {
                     </span>
                   </Td>
                   <Td>
-                    <SeverityMeter score={c.severity} band={c.severity && c.severity > 3 ? "SEVERE" : "MODERATE"} compact />
+                    <SeverityMeter score={c.severity} band={c.severityBand} percent={c.severityPercent} compact />
                   </Td>
                   <Td><PriorityBadge priority={c.priority} /></Td>
                   <Td><StatusBadge status={c.status} /></Td>

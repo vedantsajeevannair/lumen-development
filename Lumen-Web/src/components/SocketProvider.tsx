@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { initSocket, disconnectSocket } from "../lib/socket";
+import { session } from "../lib/session";
 import { Socket } from "socket.io-client";
 
 interface SocketContextValue {
@@ -15,7 +16,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     // Only connect if we have a token
-    const token = localStorage.getItem("access_token");
+    const token = session.getAccessToken();
     if (token) {
       const s = initSocket();
       setSocket(s);

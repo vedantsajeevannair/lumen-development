@@ -1,0 +1,17 @@
+# Non-secret configuration. Secrets live in the Secret / External Secrets Operator.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lumen-backend-config
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  JWT_ACCESS_TOKEN_EXPIRES_IN: "15m"
+  AWS_REGION: "ap-south-1"
+  AWS_BUCKET_NAME: "lumen-smartcity-storage"
+  # Comma-separated browser origins allowed by CORS. The deployed web app's
+  # origin MUST appear here or every request is blocked before it arrives.
+  # Native mobile builds send no Origin header and are unaffected.
+  FRONTEND_URL: "https://lumen.example.gov"
+  # In-cluster address of the AI service (deploy/k8s/ai-service.yaml).
+  FASTAPI_INFERENCE_URL: "http://lumen-ai:8000"

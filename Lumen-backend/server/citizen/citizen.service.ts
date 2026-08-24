@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { complaintDerivations } from '../common/derivations';
 import { PrismaService } from '../database/prisma.service';
 import { UpdateCitizenProfileDto } from './dto/update-citizen-profile.dto';
 import { VerifyIdentityDto } from './dto/verify-identity.dto';
@@ -286,10 +287,14 @@ export class CitizenService {
   }
 
   async getComplaints(userId: string) {
-    return this.prisma.complaint.findMany({
+    const complaints = await this.prisma.complaint.findMany({
       where: { reporterId: userId },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Severity banding and SLA state are business rules — derive them here so
+    // the web and mobile clients only render what they are given.
+    return complaints.map((c) => ({ ...c, ...complaintDerivations(c) }));
   }
 
   async getComplaintTracking(userId: string, complaintId: string) {

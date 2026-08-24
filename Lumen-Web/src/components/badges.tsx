@@ -55,24 +55,28 @@ const BAND_TEXT: Record<string, string> = {
 };
 
 /** Severity meter — the score computed by the CV service (Feature 2). */
-export function SeverityMeter({ score, band, compact = false }: {
+/** Renders severity exactly as the backend reports it.
+ *  `percent` is the server-computed 0-100 fill; `score` is only displayed. */
+export function SeverityMeter({ score, band, percent, compact = false }: {
   score: number | null;
   band: string | null;
+  percent?: number | null;
   compact?: boolean;
 }) {
   const s = score ?? 0;
   const b = band ?? "NONE";
+  const fill = percent ?? 0;
   return (
     <div className={compact ? "flex items-center gap-2" : "space-y-1.5"}>
       <div className={`h-1.5 overflow-hidden rounded-full bg-slate-100 ${compact ? "w-20 shrink-0" : "w-full"}`}>
         <div
           className={`h-full rounded-full transition-[width] duration-500 ${BAND_COLOR[b] ?? BAND_COLOR.NONE}`}
-          style={{ width: `${Math.max(2, Math.min(100, s))}%` }}
+          style={{ width: `${Math.max(2, Math.min(100, fill))}%` }}
         />
       </div>
       <span className={`tnum whitespace-nowrap text-xs font-bold ${compact ? BAND_TEXT[b] ?? BAND_TEXT.NONE : "text-slate-700"}`}>
         {s.toFixed(1)}
-        {!compact && <span className="font-medium text-slate-400"> / 100</span>}
+        
         {!compact && b !== "NONE" && (
           <span className={`ml-2 text-[11px] font-semibold uppercase tracking-wide ${BAND_TEXT[b] ?? BAND_TEXT.NONE}`}>{b}</span>
         )}
