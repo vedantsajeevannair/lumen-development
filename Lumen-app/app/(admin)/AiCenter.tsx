@@ -1,4 +1,6 @@
 import React, { useMemo } from "react";
+import { apiClient } from "@/services/api.client";
+import { severityLabel, severityColor } from "@/utils/Severity";
 import {
   View,
   StyleSheet,
@@ -42,6 +44,9 @@ interface ComplaintWithAi {
   imageUrl?: string;
   createdAt: string;
   severity?: number;
+  severityBand?: string | null;
+  severityPercent?: number | null;
+  slaStatus?: string | null;
   confidence?: number;
   aiPrediction?: AiPrediction;
 }
@@ -53,21 +58,14 @@ export default function AiCenterScreen() {
   const { data: complaints = [], isLoading } = useQuery<ComplaintWithAi[]>({
     queryKey: ["ai_complaints"],
     queryFn: async () => {
-      const res = await fetch(`${env.apiUrl}/complaints`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      return await res.json();
+      // apiClient carries the bearer token and handles 401 refresh centrally —
+      // a bare fetch() here would silently drop the session on token expiry.
+      const res = await apiClient.get("/complaints");
+      return res.data;
     },
     refetchInterval: 15000,
   });
 
-  const getSeverityLevel = (severity: number | null | undefined) => {
-    if (severity === null || severity === undefined) return "Analysis Pending";
-    if (severity > 4) return "CRITICAL";
-    if (severity > 3) return "HIGH";
-    if (severity > 1.5) return "MEDIUM";
-    return "LOW";
-  };
 
   const aiComplaints = useMemo(() => {
     if (!Array.isArray(complaints)) return [];
@@ -171,8 +169,8 @@ export default function AiCenterScreen() {
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Damage Severity</Text>
-            <Text style={[styles.statValue, { color: item.severity && item.severity > 3 ? '#F04438' : colors.textPrimary }]}>
-              {item.severity ? `${item.severity.toFixed(1)}/5.0 (${getSeverityLevel(item.severity)})` : getSeverityLevel(item.severity)}
+            <Text style={[styles.statValue, { color: severityColor(item.severityBand) }]}>
+              {item.severity ? `${item.severity.toFixed(1)}/5.0 (${severityLabel(item.severityBand)})` : severityLabel(item.severityBand)}
             </Text>
           </View>
           <View style={styles.statBox}>

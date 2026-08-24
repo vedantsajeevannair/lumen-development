@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { complaintDerivations } from '../common/derivations';
 import { PrismaService } from '../database/prisma.service';
 import { CreateComplaintDto } from './dto/create-complaint.dto';
 import { UpdateComplaintDto } from './dto/update-complaint.dto';
@@ -230,11 +231,13 @@ export class ComplaintsService {
     return { synced: results.length, complaints: results };
   }
 
-  findAll() {
-    return this.prisma.complaint.findMany({
+  async findAll() {
+    const complaints = await this.prisma.complaint.findMany({
       orderBy: { createdAt: 'desc' },
       include: { reporter: { select: { fullName: true } } },
     });
+    // Derived server-side so the mobile app renders rather than recomputes.
+    return complaints.map((c) => ({ ...c, ...complaintDerivations(c) }));
   }
 
   async findNearby(lat: number, lng: number, radiusKm: number) {
@@ -271,7 +274,7 @@ export class ComplaintsService {
     });
     if (!complaint)
       throw new NotFoundException(`Complaint with ID ${id} not found`);
-    return complaint;
+    return { ...complaint, ...complaintDerivations(complaint) };
   }
 
   async update(id: string, updateComplaintDto: UpdateComplaintDto) {

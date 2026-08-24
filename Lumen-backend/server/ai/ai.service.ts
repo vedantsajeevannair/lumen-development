@@ -23,7 +23,6 @@ export class AiService {
   ) {}
 
   async analyzeComplaintText(description: string) {
-
     const inferenceUrl = this.configService.get<string>(
       'FASTAPI_INFERENCE_URL',
     );

@@ -6,6 +6,7 @@
 // With: real react-native-maps, premium animations, 60fps
 // ============================================================
 import React, { useEffect, useRef, useState } from "react";
+import { severityLabel, severityColor } from "@/utils/Severity";
 import {
   Animated,
   Dimensions,
@@ -42,14 +43,6 @@ const { width: W } = Dimensions.get("window");
 
 // ── Report Data (replace with API / Supabase realtime) ────────
 // Dynamic data will be fetched from API instead of mock constants
-
-const getSeverityLevel = (severity: number | null | undefined) => {
-  if (severity === null || severity === undefined) return "Analysis Pending";
-  if (severity > 4) return "CRITICAL";
-  if (severity > 3) return "HIGH";
-  if (severity > 1.5) return "MEDIUM";
-  return "LOW";
-};
 
 // ── Animated Number Counter ───────────────────────────────────
 function CounterText({
@@ -612,10 +605,10 @@ export default function ReportDetailsScreen() {
                 <View style={s.analysisRow}>
                   <Text style={[TextStyles.body, { color: colors.textSecondary, flex: 1 }]}>Damage Severity</Text>
                   <Text style={[TextStyles.body, { 
-                    color: reportData.severity && reportData.severity > 3 ? '#F04438' : colors.textPrimary, 
+                    color: severityColor(reportData.severityBand), 
                     fontWeight: '500' 
                   }]}>
-                    {reportData.severity ? `${reportData.severity.toFixed(1)}/5.0 (${getSeverityLevel(reportData.severity)})` : getSeverityLevel(reportData.severity)}
+                    {reportData.severity ? `${reportData.severity.toFixed(1)}/5.0 (${severityLabel(reportData.severityBand)})` : severityLabel(reportData.severityBand)}
                   </Text>
                 </View>
 

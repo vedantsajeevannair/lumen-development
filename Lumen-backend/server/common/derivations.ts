@@ -12,15 +12,13 @@
 export const SEVERITY_SCALE_MAX = 5;
 
 export type SeverityBand =
-  | 'SEVERE'
-  | 'SIGNIFICANT'
-  | 'MODERATE'
-  | 'MINOR'
-  | 'NONE';
+  'SEVERE' | 'SIGNIFICANT' | 'MODERATE' | 'MINOR' | 'NONE';
 
 /** Thresholds match the priority derivation in ai/ai.repository.ts, so a
  *  CRITICAL complaint is always shown as SEVERE. */
-export function severityBand(severity: number | null | undefined): SeverityBand {
+export function severityBand(
+  severity: number | null | undefined,
+): SeverityBand {
   if (severity === null || severity === undefined) return 'NONE';
   if (severity > 4) return 'SEVERE';
   if (severity > 3) return 'SIGNIFICANT';

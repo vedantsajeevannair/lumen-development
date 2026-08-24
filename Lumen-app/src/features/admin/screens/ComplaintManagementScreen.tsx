@@ -28,6 +28,7 @@ import { Badge } from "@/design-system/components/Badge";
 import { useAuthStore } from "@/store/AuthStore";
 import { env } from "@/config/env";
 import { apiClient } from "@/services/api.client";
+import { severityLabel, severityColor, slaColor, slaLabel } from "@/utils/Severity";
 
 // ── Types ──────────────────────────────────────────────────
 type ComplaintStatus = "PENDING" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "REJECTED";
@@ -45,6 +46,11 @@ interface Complaint {
   longitude: number | null;
   imageUrl: string | null;
   severity: number | null;
+  // Derived by the backend (server/common/derivations.ts) so every client shows
+  // the same banding and SLA state.
+  severityBand: string | null;
+  severityPercent: number | null;
+  slaStatus: string | null;
   confidence: number | null;
   createdAt: string;
   updatedAt: string;
@@ -88,22 +94,6 @@ const PRIORITY_COLORS: Record<Priority, string> = {
   LOW: "#12B76A",
 };
 
-const SLA_HOURS: Record<Priority, number> = {
-  CRITICAL: 4,
-  HIGH: 12,
-  MEDIUM: 48,
-  LOW: 72,
-};
-
-const getSlaStatus = (createdAt: string, priority: Priority, currentStatus: ComplaintStatus) => {
-  if (currentStatus === "RESOLVED" || currentStatus === "CLOSED") return "ok";
-  const ageHours = (Date.now() - new Date(createdAt).getTime()) / 3600000;
-  const sla = SLA_HOURS[priority];
-  if (ageHours >= sla) return "breached";
-  if (ageHours >= sla * 0.75) return "warning";
-  return "ok";
-};
-
 const formatAge = (createdAt: string) => {
   const diff = Date.now() - new Date(createdAt).getTime();
   const m = Math.floor(diff / 60000);
@@ -111,14 +101,6 @@ const formatAge = (createdAt: string) => {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
-};
-
-const getSeverityLevel = (severity: number | null) => {
-  if (severity === null || severity === undefined) return "Analysis Pending";
-  if (severity > 4) return "CRITICAL";
-  if (severity > 3) return "HIGH";
-  if (severity > 1.5) return "MEDIUM";
-  return "LOW";
 };
 
 // ── Component ──────────────────────────────────────────────
@@ -317,9 +299,8 @@ export default function ComplaintManagementScreen() {
 
   // ── List Item ─────────────────────────────────────────────
   const renderItem = ({ item }: { item: Complaint }) => {
-    const slaStatus = getSlaStatus(item.createdAt, item.priority, item.status);
-    const slaColor =
-      slaStatus === "breached" ? "#F04438" : slaStatus === "warning" ? "#F79009" : "#12B76A";
+    const slaStatus = item.slaStatus;   // derived by the backend
+    const slaTone = slaColor(slaStatus);
     const isUpdating = updatingId === item.id;
     const aiConf = item.aiPrediction?.confidenceScore;
 
@@ -386,10 +367,10 @@ export default function ComplaintManagementScreen() {
               <View style={s.analysisRow}>
                 <Text style={[TextStyles.body, { color: colors.textSecondary, flex: 1 }]}>Damage Severity</Text>
                 <Text style={[TextStyles.body, { 
-                  color: item.severity && item.severity > 3 ? '#F04438' : colors.textPrimary, 
+                  color: severityColor(item.severityBand), 
                   fontWeight: '500' 
                 }]}>
-                  {getSeverityLevel(item.severity)}
+                  {severityLabel(item.severityBand)}
                 </Text>
               </View>
 
@@ -419,15 +400,10 @@ export default function ComplaintManagementScreen() {
             </Text>
           </View>
           <View style={s.footerRight}>
-            <View style={[s.slaBadge, { backgroundColor: slaColor + "15" }]}>
-              <View style={[s.slaDot, { backgroundColor: slaColor }]} />
-              <Text style={[TextStyles.caption, { color: slaColor }]}>
-                SLA{" "}
-                {slaStatus === "breached"
-                  ? "⚠ Breached"
-                  : slaStatus === "warning"
-                    ? "At Risk"
-                    : "OK"}
+            <View style={[s.slaBadge, { backgroundColor: slaTone + "15" }]}>
+              <View style={[s.slaDot, { backgroundColor: slaTone }]} />
+              <Text style={[TextStyles.caption, { color: slaTone }]}>
+                {slaLabel(slaStatus)}
               </Text>
             </View>
             <Pressable
@@ -486,10 +462,10 @@ export default function ComplaintManagementScreen() {
                   <View style={s.analysisRow}>
                     <Text style={[TextStyles.body, { color: colors.textSecondary, flex: 1 }]}>Damage Severity</Text>
                     <Text style={[TextStyles.body, { 
-                      color: selectedComplaint.severity && selectedComplaint.severity > 3 ? '#F04438' : colors.textPrimary, 
+                      color: severityColor(selectedComplaint.severityBand), 
                       fontWeight: '500' 
                     }]}>
-                      {getSeverityLevel(selectedComplaint.severity)}
+                      {severityLabel(selectedComplaint.severityBand)}
                     </Text>
                   </View>
 
