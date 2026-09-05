@@ -21,7 +21,7 @@ services:
     name: lumen-backend
     runtime: docker
     plan: free
-    region: singapore
+    region: ohio
     rootDir: Lumen-backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -134,7 +134,7 @@ services:
   - type: keyvalue
     name: lumen-redis
     plan: free
-    region: singapore
+    region: ohio
     ipAllowList: []
     maxmemoryPolicy: noeviction # BullMQ jobs must not be evicted under pressure
 
