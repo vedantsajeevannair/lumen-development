@@ -55,8 +55,31 @@ export class StorageService {
         : 'S3 client using the AWS default credential provider chain (IAM role)',
     );
 
+    // Point at any S3-compatible service instead of AWS: Supabase Storage
+    // (https://<ref>.supabase.co/storage/v1/s3), Cloudflare R2, MinIO. Unset
+    // means real S3, so the AWS deployment is unaffected.
+    //
+    // Path-style addressing is not optional for these. The SDK defaults to
+    // virtual-hosted style (bucket as a subdomain), which for a non-AWS
+    // endpoint resolves to a hostname that does not exist — so the default
+    // flips to true whenever a custom endpoint is set. S3_FORCE_PATH_STYLE
+    // exists only to override that for a provider that wants subdomains.
+    const endpoint = this.configService.get<string>('S3_ENDPOINT');
+    const forcePathStyleRaw =
+      this.configService.get<string>('S3_FORCE_PATH_STYLE');
+    const forcePathStyle = forcePathStyleRaw
+      ? forcePathStyleRaw.toLowerCase() === 'true'
+      : Boolean(endpoint);
+
+    if (endpoint) {
+      this.logger.log(
+        `S3 client targeting custom endpoint ${endpoint} (forcePathStyle=${forcePathStyle})`,
+      );
+    }
+
     this.s3Client = new S3Client({
       region,
+      ...(endpoint ? { endpoint, forcePathStyle } : {}),
       // Omitting `credentials` entirely is what lets the provider chain run.
       ...(usingStaticKeys
         ? {
