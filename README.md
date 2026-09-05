@@ -28,6 +28,14 @@ ALB.
 
 ## Deployment guides
 
+Two targets, pick one:
+
+**Managed platforms** — [`DEPLOYMENT.md`](DEPLOYMENT.md). Render + Neon + Vercel,
+no AWS account, free except the AI service. Driven by [`render.yaml`](render.yaml)
+and [`Lumen-Web/vercel.json`](Lumen-Web/vercel.json).
+
+**AWS**, as diagrammed above:
+
 - **Backend + AI service** — [`Lumen-backend/README.md`](Lumen-backend/README.md#deploying-aws),
   manifests in [`Lumen-backend/deploy/`](Lumen-backend/deploy)
 - **Web** — [`Lumen-Web/deploy/README.md`](Lumen-Web/deploy/README.md)
@@ -46,7 +54,8 @@ builds send no `Origin` header and are unaffected.
 **The YOLO weights are not in the image.** `best.pt` is gitignored and too large
 to bake in. Upload it to S3 and point `MODEL_S3_URI` at it; the AI service
 downloads it at startup using its IAM role. Rolling the Deployment picks up a
-retrained model with no rebuild.
+retrained model with no rebuild. Off AWS, where there is no role to assume, set
+`MODEL_URL` to any HTTPS copy of the weights instead.
 
 **Migrations are a release step.** Run the migration Job once per release before
 rolling the backend Deployment — several replicas racing the same migration

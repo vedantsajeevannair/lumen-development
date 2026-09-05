@@ -1,0 +1,153 @@
+# ==============================================================================
+# LUMEN — single-box deployment on an Oracle Cloud Always Free ARM instance.
+#
+# Unlike deploy/ec2/ (which expects RDS + ElastiCache) everything runs here:
+# Postgres, Redis, the API, the CV service and a TLS-terminating reverse proxy.
+# On 2 OCPU / 12 GB the whole stack idles around 3 GB.
+#
+#   ./setup.sh                       # once: Docker, firewall, directories
+#   cp .env.example .env             # then fill it in
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Caddy serves the built web app and proxies the API on ONE origin, which means
+# there is no cross-origin request to allow — see the Caddyfile.
+# ==============================================================================
+
+name: lumen
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    # The only two ports open to the internet. Everything else talks over the
+    # compose network and is unreachable from outside the box.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The built SPA (Lumen-Web/dist). Static files, served directly.
+      - ./web:/srv/web:ro
+      # Certificates and OCSP staples. Losing this volume means re-issuing certs
+      # on every restart, which will hit Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # Used by the Caddyfile. A bare IP cannot get a Let's Encrypt certificate,
+      # so this must be a real hostname — a free DuckDNS subdomain is fine.
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env — Let us Encrypt cannot issue for an IP}
+      TLS_EMAIL: ${TLS_EMAIL:?set TLS_EMAIL in .env — expiry notices go here}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: always
+    # No ports: — Caddy reaches it as http://api:3000 on the compose network.
+    # Publishing 3000 here would expose the API unencrypted on the public IP,
+    # bypassing TLS entirely.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-lumen}:${DB_PASSWORD:?set DB_PASSWORD}@postgres:5432/${DB_NAME:-lumen_db}?schema=public
+      REDIS_URL: redis://redis:6379
+      FASTAPI_INFERENCE_URL: http://fastapi:8000
+      # Single instance, so applying migrations at boot is the documented
+      # shortcut rather than a race. Revisit if this ever runs more than once.
+      RUN_MIGRATIONS_ON_START: "true"
+      # Same-origin deployment: the browser calls /api on the page's own origin,
+      # so no cross-origin request is ever made. Listed anyway because the value
+      # is also used for absolute links in outbound mail.
+      FRONTEND_URL: https://${DOMAIN}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fastapi:
+    build:
+      context: ../../server/ai/python
+      dockerfile: Dockerfile
+    restart: always
+    # Not published either. Only the API calls it, over the compose network —
+    # which is what makes FASTAPI_API_KEY optional here, exactly as on EKS.
+    environment:
+      PORT: 8000
+      MODEL_PATH: /app/models/best.pt
+      # 2 OCPU on Ampere are two *physical* cores with no SMT, so two threads
+      # saturates the box. Four would just add scheduler contention.
+      TORCH_NUM_THREADS: 2
+      PREVENT_SSRF: "True"
+      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.60}
+    volumes:
+      # Weights live on the host, not in the image: a retrained best.pt is a
+      # file copy and a restart, not a rebuild. Drop yours at ./models/best.pt.
+      - ./models:/app/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Importing torch and loading the model takes real time on ARM cores.
+      # Too short a start_period and the container is killed mid-load, forever.
+      start_period: 180s
+    stop_grace_period: 30s
+    logging: *logging
+
+  postgres:
+    # Plain Postgres: the schema uses no PostGIS types and no migration creates
+    # the extension. It also matters here specifically — postgis/postgis ships
+    # no arm64 image, so it cannot run on an Ampere A1 instance at all.
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-lumen}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-lumen_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lumen}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    # noeviction: BullMQ jobs are not cache entries. Silently dropping them
+    # under memory pressure loses dispatch work rather than slowing it down.
+    command: redis-server --appendonly yes --appendfsync everysec --maxmemory 512mb --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

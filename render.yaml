@@ -1,0 +1,155 @@
+# ==============================================================================
+# LUMEN — Render Blueprint
+#
+# Creates the backend API and its Redis instance. Postgres is NOT defined here:
+# it lives on Neon, so DATABASE_URL is supplied by hand (sync: false below).
+#
+#   Render dashboard → New → Blueprint → pick this repo
+#
+# Everything marked `sync: false` is prompted for at apply time and never stored
+# in git. See DEPLOYMENT.md for where each value comes from.
+#
+# The AI service is not here — PyTorch does not fit in Render's free instances,
+# so it runs on Cloud Run instead. See the note at the bottom of this file.
+# ==============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # NestJS API — the only service exposed to the internet.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: lumen-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: Lumen-backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Returns 503 while Postgres is unreachable, 200 otherwise — exactly what a
+    # health check wants. Redis being down reports "degraded" with a 200 on
+    # purpose, so a cache blip does not pull the instance out of service.
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # PORT is injected by Render; main.ts already reads it and binds 0.0.0.0.
+      # Do not set it here or you will override Render's router.
+
+      # --- Postgres (Neon) ---------------------------------------------------
+      # postgresql://USER:PASSWORD@HOST/DB?sslmode=require
+      # Neon requires TLS — keep sslmode=require or Prisma refuses the connection.
+      - key: DATABASE_URL
+        sync: false
+
+      # --- Redis -------------------------------------------------------------
+      # REDIS_URL wins over REDIS_HOST/REDIS_PORT everywhere in app.module.ts,
+      # so wiring this one variable is enough for both BullMQ and the cache.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: lumen-redis
+          property: connectionString
+
+      # --- Auth --------------------------------------------------------------
+      # Generated once by Render and kept across deploys. Rotating it
+      # invalidates every issued access token, which is the intended behaviour.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_TOKEN_EXPIRES_IN
+        value: 15m
+
+      # --- CORS --------------------------------------------------------------
+      # Comma-separated allow-list. MUST contain the Vercel origin or the browser
+      # blocks every request before it reaches Render. The mobile app sends no
+      # Origin header and is unaffected.
+      - key: FRONTEND_URL
+        sync: false
+
+      # --- Supabase ----------------------------------------------------------
+      # Only read by the health probe today, but env.validation.ts refuses to
+      # boot without both — SUPABASE_URL must parse as a URL.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+      # --- AI service (Cloud Run) --------------------------------------------
+      # Read per-request, not at boot, so a wrong or dead URL costs you the AI
+      # endpoints only — the rest of the API stays up. Leave the placeholder
+      # until deploy-ai.sh prints the real https://lumen-ai-....run.app URL.
+      - key: FASTAPI_INFERENCE_URL
+        sync: false
+      # Must match the key passed to deploy-ai.sh byte for byte: the backend
+      # sends it as `Authorization: Bearer <key>` and Cloud Run's copy of the
+      # service compares it. Not generated here — the AI service is deployed
+      # separately and Render cannot share a value across platforms.
+      - key: FASTAPI_API_KEY
+        sync: false
+
+      # --- S3 (complaint media) ----------------------------------------------
+      # Render has no IAM roles, so unlike the EKS path these static keys are
+      # required. Scope the IAM user to s3:GetObject/PutObject on this bucket
+      # alone — nothing else.
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_BUCKET_NAME
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+      # --- SMTP (OTP + notification mail) ------------------------------------
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+
+      # --- Google Maps -------------------------------------------------------
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+
+      # --- Migrations --------------------------------------------------------
+      # The entrypoint skips migrations unless this is true, because multiple
+      # replicas racing the same migration contend on Prisma's advisory lock.
+      # This blueprint runs a single instance, so applying them at boot is the
+      # documented single-box shortcut. Set this to false and run them as a
+      # one-off job the moment you scale past one instance.
+      - key: RUN_MIGRATIONS_ON_START
+        value: true
+
+  # ---------------------------------------------------------------------------
+  # Redis — queues (BullMQ) and cache.
+  #
+  # ipAllowList is empty on purpose: that means "reachable only from inside the
+  # Render network", not "reachable from anywhere".
+  # ---------------------------------------------------------------------------
+  - type: keyvalue
+    name: lumen-redis
+    plan: free
+    region: singapore
+    ipAllowList: []
+    maxmemoryPolicy: noeviction # BullMQ jobs must not be evicted under pressure
+
+  # ---------------------------------------------------------------------------
+  # The AI service is NOT defined here — it runs on Google Cloud Run.
+  #
+  # It needs ~2 GB of RAM (importing torch costs ~300 MB RSS before an image is
+  # decoded; with the model loaded it sits near 1 GB), so Render's 512 MB free
+  # and Starter instances OOM-kill it during startup, and the 2 GB Standard plan
+  # bills ~$25/mo whether or not anyone uses it. Inference here is idle almost
+  # all the time and bursts on submission, which is the shape scale-to-zero is
+  # built for.
+  #
+  # Deploy it with Lumen-backend/deploy/cloudrun/deploy-ai.sh, then set
+  # FASTAPI_INFERENCE_URL above to the Cloud Run URL it prints and set
+  # FASTAPI_API_KEY to the same key you passed the script. See DEPLOYMENT.md
+  # step 6.
+  # ---------------------------------------------------------------------------

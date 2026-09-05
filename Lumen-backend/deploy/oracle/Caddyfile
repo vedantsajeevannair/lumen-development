@@ -1,0 +1,60 @@
+# LUMEN reverse proxy.
+#
+# Caddy obtains and renews a Let's Encrypt certificate automatically; there is no
+# certbot step and no renewal cron. It needs port 80 reachable from the internet
+# for the ACME challenge — see setup.sh for the two firewalls that must both
+# allow it.
+#
+# Everything is served from one origin. That is not just tidiness: same-origin
+# means the browser never makes a cross-origin request, so the CORS allow-list
+# that bites every split deployment is simply not in play here. Build the web app
+# with an EMPTY VITE_API_BASE_URL so it calls /api on its own origin — the Vite
+# config already supports exactly this arrangement.
+
+{$DOMAIN} {
+	email {$TLS_EMAIL}
+
+	encode gzip zstd
+
+	# --- API ------------------------------------------------------------------
+	# The backend owns several top-level prefixes, not just /api. Keep this list
+	# in step with server/main.ts or a route will 404 as a missing static file.
+	@api path /api/* /auth/* /complaints/* /users/* /ai/* /maps/* /analytics/* /audit/* /timeline/* /gamification/* /storage/* /uploads/*
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# --- Socket.IO ------------------------------------------------------------
+	# Long-lived upgrades. Caddy proxies WebSockets natively; the only thing that
+	# matters is not buffering or timing them out.
+	handle /socket.io/* {
+		reverse_proxy api:3000
+	}
+
+	# --- Web console ----------------------------------------------------------
+	# try_files sends unknown paths to index.html so client-side routes like
+	# /app/dashboard survive a refresh or a shared deep link.
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+
+		# Hashed asset filenames change whenever their contents change, so they
+		# can be cached permanently.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
+		# index.html must not be cached: it is what points at the current bundle.
+		@html path / /index.html
+		header @html Cache-Control "no-cache, no-store, must-revalidate"
+	}
+
+	header {
+		# HSTS is deliberately absent: it is hard to undo, and a college demo on a
+		# DuckDNS subdomain does not want a browser pinned to HTTPS for a year.
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

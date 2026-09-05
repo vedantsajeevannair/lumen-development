@@ -90,9 +90,15 @@ MODEL_PATH=/app/models/best.pt
 
 The service downloads it on startup via the pod's IAM role (no static keys) and
 caches it in an `emptyDir`. Rolling the Deployment picks up a retrained model
-without rebuilding the image. If the file is absent and `MODEL_S3_URI` is unset,
-the service fails fast with an explanatory error rather than serving a model-less
-container.
+without rebuilding the image.
+
+On a platform with no role to assume (Render, Railway, Fly — see
+[`../DEPLOYMENT.md`](../DEPLOYMENT.md)), set `MODEL_URL` to an `https://` copy of
+the weights instead — a GitHub release asset, a Hugging Face file or a presigned
+S3 link. `MODEL_S3_URI` takes precedence when both are set.
+
+If the file is absent and neither variable is set, the service fails fast with an
+explanatory error rather than serving a model-less container.
 
 `FASTAPI_API_KEY` must match on both sides: the backend sends it as
 `Authorization: Bearer <key>` and the AI service verifies it. Leave it unset only

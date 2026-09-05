@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     # MODEL_PATH at startup. This keeps multi-hundred-MB .pt files out of the
     # container image and lets a retrained model roll out without a rebuild.
     MODEL_S3_URI: str = os.getenv("MODEL_S3_URI", "")
+    # Same idea over plain HTTPS, for hosts that have no IAM roles to assume
+    # (Render, Railway, Fly). A GitHub release asset or Hugging Face file works.
+    # MODEL_S3_URI takes precedence when both are set.
+    MODEL_URL: str = os.getenv("MODEL_URL", "")
     CONFIDENCE_THRESHOLD: float = float(os.getenv("CONFIDENCE_THRESHOLD", "0.60"))
     DEVICE: str = os.getenv("DEVICE", "")  # leave empty for auto-detect (cuda if available, else cpu)
     VIDEO_SAMPLE_RATE: int = int(os.getenv("VIDEO_SAMPLE_RATE", "1"))  # Extract 1 frame per second

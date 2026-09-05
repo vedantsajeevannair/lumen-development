@@ -2,7 +2,12 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgis/postgis:17-3.5
+    # Plain Postgres, not postgis/postgis: the schema stores coordinates as
+    # ordinary Float columns and no migration creates the extension, so PostGIS
+    # bought nothing — and its image has no arm64 build, which breaks Apple
+    # Silicon and ARM servers outright. Switch back only alongside a migration
+    # that actually enables the extension.
+    image: postgres:17-alpine
     container_name: lumen_postgres
     restart: always
     environment:

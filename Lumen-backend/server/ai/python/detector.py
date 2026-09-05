@@ -46,7 +46,7 @@ class YOLODetector:
         try:
             # Fetch the trained weights first when they are not in the image.
             model_path = ensure_model_available(
-                settings.MODEL_PATH, settings.MODEL_S3_URI
+                settings.MODEL_PATH, settings.MODEL_S3_URI, settings.MODEL_URL
             )
             self.model = YOLO(model_path)
             

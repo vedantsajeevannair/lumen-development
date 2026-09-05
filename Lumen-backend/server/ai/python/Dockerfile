@@ -44,5 +44,9 @@ USER lumen
 
 EXPOSE 8000
 
+# Bind $PORT when the platform injects one (Cloud Run, Render and most PaaS
+# assign it and will not route to a container listening anywhere else), falling
+# back to 8000 so the compose file and the k8s manifests keep working unchanged.
+# This is the shell form on purpose — the exec form cannot expand a variable.
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]
