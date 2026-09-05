@@ -10,6 +10,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Role, ComplaintStatus, Priority } from '@prisma/client';
+import { randomBytes } from 'crypto';
 
 export type AssignComplaint = {
   id: string;
@@ -296,7 +297,26 @@ export class WebIntegrationService implements OnModuleInit {
     this.logger.log('Checking database seed data...');
     try {
       const bcrypt = await import('bcrypt');
-      const hash = await bcrypt.hash('lumen123', 10);
+
+      // The seed password must not be a literal. This repository is public and
+      // the accounts it creates are ADMIN, SUPERVISOR and ENGINEER — a hardcoded
+      // value means anyone who reads this file can sign in to any deployment
+      // that ever ran this seed. Set SEED_PASSWORD to choose one; otherwise a
+      // random password is generated and the accounts are effectively locked
+      // until someone resets them, which is the safe default for an
+      // internet-facing deploy.
+      const seedPassword =
+        this.configService.get<string>('SEED_PASSWORD') ||
+        randomBytes(24).toString('base64url');
+      const hash = await bcrypt.hash(seedPassword, 10);
+
+      if (!this.configService.get<string>('SEED_PASSWORD')) {
+        this.logger.warn(
+          'SEED_PASSWORD not set — seeded accounts were given a random ' +
+            'password and cannot be logged into. Set SEED_PASSWORD and reseed, ' +
+            'or reset the passwords, if you need them.',
+        );
+      }
 
       const users = [
         {
