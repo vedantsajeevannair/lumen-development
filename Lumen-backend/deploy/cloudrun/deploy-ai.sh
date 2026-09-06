@@ -9,9 +9,7 @@
 #
 # Why Cloud Run for this service: inference is idle almost all the time and
 # bursts when a citizen submits a photo. Scale-to-zero means an idle service
-# costs nothing, and 2 GB of memory is available — the 512 MB free tiers on
-# other platforms OOM-kill this container during startup, because importing
-# torch alone costs ~300 MB before an image is decoded.
+# costs nothing while still answering within a second when a report arrives.
 set -euo pipefail
 
 : "${PROJECT_ID:?set PROJECT_ID — your GCP project}"
@@ -42,7 +40,7 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../server/ai/python" && pwd)"
 # a user-facing request. Baking it in trades rebuild-on-retrain for a fast,
 # dependency-free cold start.
 # ------------------------------------------------------------------------------
-WEIGHTS="${SRC_DIR}/models/best.pt"
+WEIGHTS="${SRC_DIR}/models/best.onnx"
 if [[ ! -f "${WEIGHTS}" ]]; then
   cat >&2 <<EOF
 ✗ No weights at ${WEIGHTS}
@@ -50,9 +48,15 @@ if [[ ! -f "${WEIGHTS}" ]]; then
   The service fails fast at startup without them rather than serving a
   model-less container, so deploying now would just produce a crash loop.
 
-  Put your trained best.pt there and re-run. It is gitignored, so it will not
-  be committed — but there is no .dockerignore, so the Docker build context
-  picks it up and bakes it into the image.
+  Export your trained best.pt to ONNX and put the result there:
+
+    python -c "from ultralytics import YOLO; \
+      YOLO('models/best.pt').export(format='onnx', nms=True, imgsz=640, \
+      opset=12, simplify=True, conf=0.001, iou=0.7)"
+
+  conf=0.001 matters: nms=True bakes a confidence threshold into the graph, and
+  the ultralytics default of 0.25 would silently discard everything below it
+  before CONFIDENCE_THRESHOLD is ever applied.
 
   To download from a URL at runtime instead (slower cold starts), remove this
   check and set MODEL_URL on the service.
@@ -97,7 +101,7 @@ gcloud run deploy "${SERVICE}" \
   --concurrency 1 \
   --timeout 120s \
   --cpu-boost \
-  --set-env-vars "^;^MODEL_PATH=/app/models/best.pt;TORCH_NUM_THREADS=2;PREVENT_SSRF=True;CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.60};FASTAPI_API_KEY=${FASTAPI_API_KEY}"
+  --set-env-vars "^;^MODEL_PATH=/app/models/best.onnx;TORCH_NUM_THREADS=2;PREVENT_SSRF=True;CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.60};FASTAPI_API_KEY=${FASTAPI_API_KEY}"
 
 URL="$(gcloud run services describe "${SERVICE}" \
   --project "${PROJECT_ID}" --region "${REGION}" --format 'value(status.url)')"

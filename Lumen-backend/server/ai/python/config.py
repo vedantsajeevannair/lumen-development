@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
-    MODEL_PATH: str = os.getenv("MODEL_PATH", "models/best.pt")
+    MODEL_PATH: str = os.getenv("MODEL_PATH", "models/best.onnx")
     # Optional S3 location of the trained weights, e.g.
     #   s3://lumen-smartcity-storage/models/best.pt
     # When set and MODEL_PATH is absent on disk, the weights are downloaded to

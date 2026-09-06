@@ -1,8 +1,8 @@
 # ==============================================================================
 # LUMEN AI inference service (FastAPI + YOLO)
 #
-# CPU image. For GPU nodes, swap the torch index below for a CUDA build and base
-# the image on nvidia/cuda instead.
+# CPU image. Inference is onnxruntime against an exported ONNX graph; for GPU
+# nodes swap onnxruntime for onnxruntime-gpu and base the image on nvidia/cuda.
 # ==============================================================================
 FROM python:3.11-slim AS base
 
@@ -34,19 +34,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Install the CPU-only torch build first. Plain `pip install torch` pulls the
-# CUDA wheels (several GB of nvidia libraries) which are dead weight on CPU
-# nodes and blow up image pull time.
-RUN pip install --no-cache-dir \
-      --index-url https://download.pytorch.org/whl/cpu \
-      torch torchvision \
- && pip install --no-cache-dir -r requirements.txt
+# No torch. Inference runs on onnxruntime (~60MB) against an exported ONNX
+# graph, where torch + torchvision + ultralytics cost ~615MB installed and were
+# used for nothing but the forward pass. That difference is what keeps the image
+# inside Artifact Registry's free tier, and it cuts cold starts from ~30s of
+# importing torch to a couple of seconds.
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Weights are fetched at startup from MODEL_S3_URI (see model_source.py), so the
-# image stays small and a retrained model does not need a rebuild. Create the
-# directory up front and make it writable by the runtime user.
+# The ONNX weights are ~10MB and baked in by `COPY . .` above. On a scale-to-zero
+# platform, downloading them at startup would pay that latency on a user-facing
+# request at every cold start, which is the wrong trade here.
 RUN mkdir -p /app/models && useradd --create-home --uid 1000 lumen \
  && chown -R lumen:lumen /app
 USER lumen

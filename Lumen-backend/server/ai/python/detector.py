@@ -3,9 +3,8 @@ import logging
 import gc
 import time
 import numpy as np
-import torch
 from typing import Optional, List, Dict, Any
-from ultralytics import YOLO
+from onnx_backend import OnnxYOLO
 from config import settings
 from postprocess import format_single_prediction, merge_video_predictions
 from preprocess import download_image_async, download_video_frames_async
@@ -14,7 +13,7 @@ from model_source import ensure_model_available
 logger = logging.getLogger("uvicorn.error")
                                                 
 class YOLODetector:
-    model: Optional[YOLO]
+    model: Optional[OnnxYOLO]
     device: Optional[str]
     queue: Optional[asyncio.Queue]
     worker_task: Optional[asyncio.Task]
@@ -30,17 +29,11 @@ class YOLODetector:
     def load_model(self):
         logger.info(f"Loading YOLO model from {settings.MODEL_PATH}...")
         
-        if settings.DEVICE:
-            self.device = settings.DEVICE
-        else:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            
+        # onnxruntime here is CPU-only: this runs on Cloud Run, which has no GPU,
+        # and a CUDA build would drag back the hundreds of megabytes the ONNX
+        # migration exists to avoid.
+        self.device = settings.DEVICE or "cpu"
         logger.info(f"Using device: {self.device}")
-        
-        
-        if self.device == "cpu":
-            logger.info(f"Setting PyTorch CPU threads to {settings.TORCH_NUM_THREADS}")
-            torch.set_num_threads(settings.TORCH_NUM_THREADS)
         
       
         try:
@@ -48,7 +41,7 @@ class YOLODetector:
             model_path = ensure_model_available(
                 settings.MODEL_PATH, settings.MODEL_S3_URI, settings.MODEL_URL
             )
-            self.model = YOLO(model_path)
+            self.model = OnnxYOLO(model_path, num_threads=settings.TORCH_NUM_THREADS)
             
           
             logger.info("Pre-warming YOLO model...")
@@ -62,10 +55,6 @@ class YOLODetector:
     def unload_model(self):
         logger.info("Unloading YOLO model...")
         self.model = None
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        elif hasattr(torch, "backends") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            torch.mps.empty_cache()
         gc.collect()
         logger.info("YOLO model unloaded successfully and memory released.")
 
