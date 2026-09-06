@@ -21,14 +21,25 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly s3Client: S3Client;
   private readonly bucketName: string;
+  private readonly publicBaseUrl: string | undefined;
+  private readonly endpoint: string | undefined;
 
   constructor(private readonly configService: ConfigService) {
-    const region = this.configService.get<string>('AWS_REGION')!;
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>(
-      'AWS_SECRET_ACCESS_KEY',
-    );
-    this.bucketName = this.configService.get<string>('AWS_BUCKET_NAME')!;
+    // STORAGE_* is the name to use. This client speaks the S3 *protocol*, which
+    // is not the same thing as running on AWS — Supabase Storage, Cloudflare R2
+    // and MinIO all implement it, and calling the variables AWS_* invites the
+    // reasonable but wrong conclusion that an Amazon account is involved.
+    //
+    // AWS_* is still read as a fallback so the EKS/EC2 deployment documented in
+    // the README keeps working untouched.
+    const cfg = (name: string) =>
+      this.configService.get<string>(`STORAGE_${name}`) ??
+      this.configService.get<string>(`AWS_${name}`);
+
+    const region = cfg('REGION')!;
+    const accessKeyId = cfg('ACCESS_KEY_ID');
+    const secretAccessKey = cfg('SECRET_ACCESS_KEY');
+    this.bucketName = cfg('BUCKET_NAME')!;
 
     // Region and bucket are always required. Credentials are NOT: on EC2, ECS or
     // EKS the SDK resolves them from the instance profile / task role / IRSA via
@@ -37,10 +48,10 @@ export class StorageService {
     if (!region || !this.bucketName) {
       if (process.env.NODE_ENV === 'production') {
         this.logger.error(
-          'CRITICAL: AWS_REGION or AWS_BUCKET_NAME is missing in production',
+          'CRITICAL: STORAGE_REGION or STORAGE_BUCKET_NAME is missing in production',
         );
         throw new InternalServerErrorException(
-          'AWS_REGION and AWS_BUCKET_NAME are required',
+          'STORAGE_REGION and STORAGE_BUCKET_NAME are required',
         );
       }
       this.logger.warn(
@@ -64,12 +75,17 @@ export class StorageService {
     // endpoint resolves to a hostname that does not exist — so the default
     // flips to true whenever a custom endpoint is set. S3_FORCE_PATH_STYLE
     // exists only to override that for a provider that wants subdomains.
-    const endpoint = this.configService.get<string>('S3_ENDPOINT');
-    const forcePathStyleRaw =
-      this.configService.get<string>('S3_FORCE_PATH_STYLE');
+    const endpoint = cfg('ENDPOINT');
+    const forcePathStyleRaw = cfg('FORCE_PATH_STYLE');
     const forcePathStyle = forcePathStyleRaw
       ? forcePathStyleRaw.toLowerCase() === 'true'
       : Boolean(endpoint);
+
+    this.endpoint = endpoint;
+    // Where uploaded objects are publicly readable from. Supabase serves them at
+    // /storage/v1/object/public/<bucket>, which is not the same path as its S3
+    // API endpoint, so the two cannot be derived from each other.
+    this.publicBaseUrl = cfg('PUBLIC_BASE_URL');
 
     if (endpoint) {
       this.logger.log(
@@ -162,7 +178,16 @@ export class StorageService {
         );
       }
 
-      const url = `https://${this.bucketName}.s3.${await this.s3Client.config.region()}.amazonaws.com/${key}`;
+      // The object URL is handed to the AI service, which fetches it over plain
+      // HTTP — so it has to be the address the object is actually readable at.
+      // Hardcoding the amazonaws.com form made every non-AWS endpoint return a
+      // URL for a bucket that does not exist, and the failure surfaced later as
+      // a download error in the CV service rather than here.
+      const url = this.publicBaseUrl
+        ? `${this.publicBaseUrl.replace(/\/$/, '')}/${key}`
+        : this.endpoint
+          ? `${this.endpoint.replace(/\/$/, '')}/${this.bucketName}/${key}`
+          : `https://${this.bucketName}.s3.${await this.s3Client.config.region()}.amazonaws.com/${key}`;
 
       this.logger.log(`Upload completed for key: ${key}`);
 
