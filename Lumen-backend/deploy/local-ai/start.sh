@@ -95,7 +95,10 @@ TUNNEL_PID=$!
 
 URL=""
 for _ in $(seq 1 45); do
-  URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/tunnel.log" 2>/dev/null | head -1)"
+  # `|| true` is load-bearing: under `set -e` with pipefail, grep exiting 1
+  # because the URL has not been printed yet would kill the script on the very
+  # first pass, before cloudflared has had a chance to write anything.
+  URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/tunnel.log" 2>/dev/null | head -1 || true)"
   [[ -n "$URL" ]] && break
   kill -0 "$TUNNEL_PID" 2>/dev/null || { warn "cloudflared exited:"; tail -20 "$LOG_DIR/tunnel.log" >&2; exit 1; }
   sleep 2
