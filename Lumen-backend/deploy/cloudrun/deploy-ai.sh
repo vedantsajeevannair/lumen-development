@@ -73,6 +73,17 @@ echo "→ building and deploying ${SERVICE} to ${REGION}"
 # but the ones in the final flag. The ^;^ prefix switches the delimiter from a
 # comma to a semicolon, so a value that happens to contain a comma cannot split
 # itself into bogus extra variables.
+#
+# --cpu 1, not 2: vCPU-seconds are what the free tier runs out of first. The
+# monthly 180k vCPU-seconds is 50 hours of instance time at 1 vCPU but only 25 at
+# 2, while the memory allowance is nowhere near binding. Inference is somewhat
+# slower per image and the free window doubles.
+#
+# --concurrency 1: each simultaneous inference holds its own decoded image and
+# tensors on top of the ~1 GB the loaded model already occupies, so several at
+# once in 2 GiB invites an OOM — and Cloud Run kills the whole instance, failing
+# every in-flight request rather than just the one that overran. Scaling out to
+# more instances costs the same and fails one request at a time.
 gcloud run deploy "${SERVICE}" \
   --source "${SRC_DIR}" \
   --project "${PROJECT_ID}" \
@@ -80,10 +91,10 @@ gcloud run deploy "${SERVICE}" \
   --platform managed \
   --allow-unauthenticated \
   --memory 2Gi \
-  --cpu 2 \
+  --cpu 1 \
   --min-instances 0 \
   --max-instances 3 \
-  --concurrency 4 \
+  --concurrency 1 \
   --timeout 120s \
   --cpu-boost \
   --set-env-vars "^;^MODEL_PATH=/app/models/best.pt;TORCH_NUM_THREADS=2;PREVENT_SSRF=True;CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.60};FASTAPI_API_KEY=${FASTAPI_API_KEY}"
