@@ -1,0 +1,26 @@
+# What NOT to upload to Cloud Build.
+#
+# Deliberately does NOT chain to .gitignore (no "#!include:.gitignore"): the
+# trained weights are gitignored but must be uploaded, because the Cloud Run
+# image bakes them in rather than downloading them at every cold start.
+#
+# .venv is the expensive one — a local macOS/ARM virtualenv with torch inside is
+# a couple of GB of files that are useless in a linux/amd64 image, and the
+# Dockerfile's `COPY . .` would bake every byte of it into the layer.
+.venv/
+venv/
+env/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.git/
+.gitignore
+.DS_Store
+*.log
+
+# Local test scripts; the service does not import them.
+test_*.py

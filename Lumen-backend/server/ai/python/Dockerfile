@@ -12,14 +12,16 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# opencv-python-headless is built without GUI support, so the GL/X11 packages the
-# previous image installed (libgl1-mesa-glx, libsm6, libxext6, libxrender-dev)
-# are not needed — dropping them trims the image. libgl1-mesa-glx is still a
-# transitional package on bookworm, but it is gone in trixie, so this also
-# avoids a break when the base image moves on.
+# opencv-python-headless has no GUI, so the full GL/X11 set the original image
+# installed (libgl1-mesa-glx, libsm6, libxext6, libxrender-dev) is not needed.
+# libxcb1 is, though: OpenCV 5's headless wheel links libxcb.so.1 where 4.x did
+# not, and requirements.txt has no upper bound, so a fresh build picks up 5.x and
+# dies at import with "libxcb.so.1: cannot open shared object file" — which
+# surfaces only as a container that will not start.
 # tini forwards SIGTERM so uvicorn can drain.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libglib2.0-0 \
+      libxcb1 \
       tini \
     && rm -rf /var/lib/apt/lists/*
 
