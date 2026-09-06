@@ -77,10 +77,19 @@ export class WebIntegrationController {
     return this.integrationService.getComplaints(status, q);
   }
 
+  // The web form posts multipart/form-data — the photograph is the point of the
+  // report, not an optional extra. Without FileInterceptor the body arrives
+  // unparsed, every field reads as undefined, and Prisma rejects the missing
+  // title as a bare 500 that says nothing about the real cause.
   @UseGuards(JwtAuthGuard)
   @Post('complaints')
-  async createComplaint(@Body() body: any, @CurrentUser() user: any) {
-    return this.integrationService.createComplaint(body, user.id);
+  @UseInterceptors(FileInterceptor('photo'))
+  async createComplaint(
+    @Body() body: any,
+    @UploadedFile() photo: Express.Multer.File | undefined,
+    @CurrentUser() user: any,
+  ) {
+    return this.integrationService.createComplaint(body, user.id, photo);
   }
 
   @UseGuards(JwtAuthGuard)

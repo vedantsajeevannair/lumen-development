@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { complaintDerivations, severityPercent } from '../common/derivations';
 import { PrismaService } from '../database/prisma.service';
@@ -11,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Role, ComplaintStatus, Priority } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { StorageService } from '../common/storage/storage.service';
 
 export type AssignComplaint = {
   id: string;
@@ -287,6 +290,7 @@ export class WebIntegrationService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
   async onModuleInit() {
@@ -734,7 +738,32 @@ export class WebIntegrationService implements OnModuleInit {
     return dbComplaint;
   }
 
-  async createComplaint(body: any, userId: string) {
+  async createComplaint(
+    body: any,
+    userId: string,
+    photo?: Express.Multer.File,
+  ) {
+    // The photograph is the evidence the whole pipeline runs on: the AI service
+    // fetches it by URL, so it has to be somewhere reachable before the
+    // complaint exists. Fail with the reason rather than storing a placeholder
+    // that silently makes detection impossible later.
+    let imageUrl: string | undefined = body.imageUrl;
+    if (photo) {
+      try {
+        const stored = await this.storageService.uploadFile(photo);
+        imageUrl = stored.imageUrl || stored.url;
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        this.logger.error(`Complaint photo upload failed: ${reason}`);
+        throw new ServiceUnavailableException(
+          `Could not store the photograph: ${reason}`,
+        );
+      }
+    }
+    if (!imageUrl) {
+      throw new BadRequestException('A photograph is required.');
+    }
+
     const lastComplaint = await this.prisma.complaint.findFirst({
       orderBy: { createdAt: 'desc' },
     });
@@ -750,7 +779,7 @@ export class WebIntegrationService implements OnModuleInit {
         status: ComplaintStatus.PENDING,
         latitude: body.lat ? Number(body.lat) : 12.9716,
         longitude: body.lng ? Number(body.lng) : 77.5946,
-        imageUrl: body.imageUrl || 'https://placeholder-url.com',
+        imageUrl,
         reporterId: userId,
       },
     });
