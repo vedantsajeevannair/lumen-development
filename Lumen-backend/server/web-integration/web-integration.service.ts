@@ -14,6 +14,7 @@ import { firstValueFrom } from 'rxjs';
 import { Role, ComplaintStatus, Priority } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { StorageService } from '../common/storage/storage.service';
+import { AiService } from '../ai/ai.service';
 
 export type AssignComplaint = {
   id: string;
@@ -291,6 +292,7 @@ export class WebIntegrationService implements OnModuleInit {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly storageService: StorageService,
+    private readonly aiService: AiService,
   ) {}
 
   async onModuleInit() {
@@ -783,6 +785,19 @@ export class WebIntegrationService implements OnModuleInit {
         reporterId: userId,
       },
     });
+
+    // The form's button reads "Analyse & Create Complaint — runs detection →
+    // severity → duplicate check", but this route only ever created the row, so
+    // every complaint filed from the web console sat at "No AI predictions
+    // available yet" with severity 0. processImagePrediction stores the
+    // prediction and feeds updateComplaintWithAiResult, which is what actually
+    // derives severity, priority and the 30m duplicate clustering.
+    //
+    // Awaited rather than fired and forgotten: the user is shown the complaint
+    // page immediately after this resolves, and detection takes about a second.
+    // It swallows its own failures internally (marking the prediction FAILED),
+    // so a CV outage cannot lose an otherwise valid report.
+    await this.aiService.processImagePrediction(complaint.id, imageUrl);
 
     return { ref: complaint.trackingId };
   }
