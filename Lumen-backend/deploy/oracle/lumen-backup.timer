@@ -1,0 +1,17 @@
+[Unit]
+Description=Run the LUMEN backup nightly
+
+[Timer]
+# 19:30 UTC is 01:00 IST — past the quiet end of a working day for the
+# municipality this serves, so a dump never contends with real traffic.
+OnCalendar=*-*-* 19:30:00
+# The instance is not expected to be off, but a missed run should still happen
+# rather than silently leaving a day with no backup.
+Persistent=true
+# Nothing else is scheduled on this box, so the spread is only to avoid every
+# instance in a fleet hitting Object Storage on the same second if this is ever
+# copied to more than one.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

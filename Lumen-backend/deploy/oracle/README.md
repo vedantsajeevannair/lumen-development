@@ -100,19 +100,73 @@ The console needs no restart — Caddy serves the files off disk.
 
 ## Backups
 
-**There are none.** This is the real cost of consolidating: Supabase took daily
-backups of the database, and that is now a single container on a single VM. A
-lost boot volume loses every complaint.
+Consolidating traded managed-service backups for a single point of failure:
+database, photographs and containers all sit on one 50 GB boot volume. A backup
+written beside them would protect against a bad migration and nothing else, so
+these go **off the box** — to OCI Object Storage, a different service with its
+own free allowance that survives the instance being destroyed.
 
-At minimum, take periodic dumps off the box:
+`backup.sh` runs nightly at 19:30 UTC (01:00 IST) under the `lumen-backup`
+systemd timer. Each run uploads a timestamped set:
 
-```bash
-ssh -i ~/.ssh/lumen_oracle ubuntu@140.238.250.246 \
-  'sudo docker exec lumen-postgres-1 pg_dump -U lumen -d lumen_db -Fc' > lumen-$(date +%F).dump
+```
+<UTC timestamp>/db.dump        pg_dump -Fc of lumen_db
+<UTC timestamp>/files.tar.gz   every object in the photo bucket
+<UTC timestamp>/manifest.txt   sizes and image count, so a restore is self-describing
 ```
 
-Oracle's own boot-volume backups are also within the Always Free allowance and
-are worth enabling from the console.
+Database and photographs are captured under one timestamp deliberately.
+Restoring a database from one night against photographs from another leaves
+complaints pointing at objects that do not exist.
+
+```bash
+systemctl list-timers lumen-backup          # when it next runs
+systemctl status lumen-backup.service       # how the last run went
+sudo systemctl start lumen-backup.service   # run one now
+```
+
+### The upload credential
+
+The box holds a pre-authenticated request URL scoped to `AnyObjectWrite`, in
+`BACKUP_PAR_URL`. It can create objects in the bucket and **cannot read, list or
+delete them**. If this instance is ever compromised, that URL cannot be used to
+read old backups or to wipe them before encrypting the live data.
+
+It expires **2028-01-01**. Backups fail loudly after that; reissue with:
+
+```bash
+oci os preauth-request create --namespace <ns> --bucket-name lumen-backups \
+  --name lumen-box-backup-writer --access-type AnyObjectWrite \
+  --time-expires <date>
+```
+
+The returned `access-uri` is a *path*, not a URL — prefix it with
+`https://objectstorage.<region>.oraclecloud.com` before putting it in `.env`.
+
+A bucket lifecycle rule deletes objects after 90 days. At roughly 1 MB a night
+that is about 90 MB against a 20 GB allowance, so the rule is hygiene rather
+than necessity.
+
+### Restoring
+
+```bash
+oci os object get --namespace <ns> --bucket-name lumen-backups \
+  --name '<timestamp>/db.dump' --file db.dump
+scp -i ~/.ssh/lumen_oracle db.dump ubuntu@140.238.250.246:/tmp/
+ssh -i ~/.ssh/lumen_oracle ubuntu@140.238.250.246 \
+  'sudo docker cp /tmp/db.dump lumen-postgres-1:/tmp/db.dump && \
+   sudo docker exec lumen-postgres-1 pg_restore -U lumen -d lumen_db \
+     --clean --if-exists --no-owner --no-privileges /tmp/db.dump'
+```
+
+Photographs restore by extracting `files.tar.gz` and `mc mirror`-ing it back
+into the bucket.
+
+**Test the restore into a scratch database, not the live one** — `CREATE
+DATABASE restore_test`, restore there, check the row counts, drop it. A backup
+nobody has restored is a hypothesis. This one has been verified end to end:
+downloaded from Object Storage, restored into a scratch database, row counts
+matched, scratch dropped.
 
 ## Certificates
 

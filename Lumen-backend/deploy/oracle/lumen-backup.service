@@ -1,0 +1,14 @@
+[Unit]
+Description=LUMEN nightly backup to OCI Object Storage
+# Docker must be up; the script talks to running containers, not to disk files.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/lumen/backup.sh
+# Root because the script drives the Docker socket. It reads .env, which holds
+# every credential on the box, so this file's own mode matters as much.
+User=root
+# A backup that hangs must not still be hanging when tomorrow's run fires.
+TimeoutStartSec=1800
