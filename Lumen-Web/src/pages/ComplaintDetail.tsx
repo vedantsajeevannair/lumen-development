@@ -183,8 +183,11 @@ export function ComplaintDetail() {
                             height: `${(ymax - ymin) * 100}%`,
                           }}
                         >
+                          {/* Numbered to match the breakdown table below, so a
+                            * row can be tied to the region it describes when
+                            * several overlap. */}
                           <span className="absolute -top-[22px] left-[-2px] whitespace-nowrap rounded-md bg-red-500 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-sm">
-                            {box.class_name || box.label || "Damage"} {conf.toFixed(0)}%
+                            {box.class_name || box.label || "Damage"} {i + 1} · {conf.toFixed(0)}%
                           </span>
                         </div>
                       );
@@ -224,6 +227,60 @@ export function ComplaintDetail() {
                 </div>
               )}
             </div>
+
+            {/* Per-region breakdown. The three tiles above collapse every
+             * detection into one class and one averaged confidence, which hides
+             * the case this model is most often wrong about: several regions of
+             * differing confidence, where the average reads as uncertain but the
+             * strongest detection is not. Frame area is the share of the image a
+             * region covers — the closest thing to "how big is it" available
+             * without a metric scale. */}
+            {boxes.length > 0 && (
+              <div className="mt-5 border-t border-slate-100 pt-5">
+                <h3 className="mb-3 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                  Detected regions
+                </h3>
+                <div className="-mx-1 overflow-x-auto px-1">
+                  <table className="w-full min-w-[440px] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        <th className="pb-2 pr-3 font-bold">Class</th>
+                        <th className="pb-2 pr-3 font-bold">Confidence</th>
+                        <th className="pb-2 pr-3 font-bold">Frame area</th>
+                        <th className="pb-2 font-bold">Box</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {boxes.map((box: any, i: number) => {
+                        const xmin = parseFloat(box.xmin) || 0;
+                        const ymin = parseFloat(box.ymin) || 0;
+                        const xmax = parseFloat(box.xmax) || 0;
+                        const ymax = parseFloat(box.ymax) || 0;
+                        const conf = (parseFloat(box.confidence) || 0) * 100;
+                        const area = Math.max(0, xmax - xmin) * Math.max(0, ymax - ymin) * 100;
+                        return (
+                          <tr key={i} className="border-b border-slate-100 last:border-0">
+                            <td className="py-2 pr-3">
+                              <span className="inline-flex items-center gap-1.5 font-medium text-slate-900">
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                                  {i + 1}
+                                </span>
+                                {box.class_name || box.label || "Damage"}
+                              </span>
+                            </td>
+                            <td className="tnum py-2 pr-3 text-slate-700">{conf.toFixed(1)}%</td>
+                            <td className="tnum py-2 pr-3 text-slate-700">{area.toFixed(2)}%</td>
+                            <td className="tnum py-2 font-mono text-xs text-slate-400">
+                              {xmin.toFixed(3)}, {ymin.toFixed(3)}, {xmax.toFixed(3)}, {ymax.toFixed(3)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </Card>
 
           {possibleTransitions.length > 0 && (

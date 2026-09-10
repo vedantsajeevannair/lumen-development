@@ -706,17 +706,40 @@ export class WebIntegrationService implements OnModuleInit {
           rawBoxes = JSON.parse(rawBoxes);
         }
 
-        const mappedBoxes = (Array.isArray(rawBoxes) ? rawBoxes : []).map(
+        // Boxes are passed through as the detector emitted them:
+        //   { label, class_name, confidence, xmin, ymin, xmax, ymax }
+        // with coordinates normalised to 0–1 (postprocess.py uses xyxyn).
+        //
+        // This used to flatten each one to [xmin, ymin, width, height], which
+        // broke both clients — they read box.xmin/.xmax/.confidence, got
+        // undefined off an array, and drew every box at zero size in the
+        // top-left corner. The detail page reported "N regions localised" while
+        // showing no outline at all. Flattening also discarded the per-box
+        // label and confidence, which nothing could then recover.
+        //
+        // Legacy rows stored as a bare [xmin, ymin, width, height] array are
+        // converted forward rather than dropped, so complaints predicted before
+        // this fix still render.
+        const mappedBoxes = (Array.isArray(rawBoxes) ? rawBoxes : []).flatMap(
           (box: any) => {
-            if (Array.isArray(box)) return box;
-            if (box && typeof box === 'object') {
-              const xmin = box.xmin ?? 0;
-              const ymin = box.ymin ?? 0;
-              const xmax = box.xmax ?? 0;
-              const ymax = box.ymax ?? 0;
-              return [xmin, ymin, xmax - xmin, ymax - ymin];
+            if (box && typeof box === 'object' && !Array.isArray(box)) {
+              return [box];
             }
-            return [0, 0, 0, 0];
+            if (Array.isArray(box) && box.length === 4) {
+              const [xmin, ymin, w, h] = box.map(Number);
+              return [
+                {
+                  label: 'Damage',
+                  class_name: 'Damage',
+                  confidence: 0,
+                  xmin,
+                  ymin,
+                  xmax: xmin + w,
+                  ymax: ymin + h,
+                },
+              ];
+            }
+            return [];
           },
         );
 
