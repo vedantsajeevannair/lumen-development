@@ -1,6 +1,14 @@
 import { Platform } from "react-native";
 
-const DEFAULT_API_URL = "https://backend.render.com";
+/** The deployed backend, so a fresh clone runs without a .env.
+ *
+ * This was "https://backend.render.com" — a placeholder domain that does not
+ * resolve, so every request from a clone without a .env failed with a network
+ * error rather than anything that pointed at the cause. Nothing secret lives
+ * here; it is the same public URL the web console calls.
+ *
+ * Override it in .env to point at a local backend. */
+const DEFAULT_API_URL = "https://lumen-development.onrender.com";
 
 /** Android emulators cannot reach the host's localhost — 10.0.2.2 is the bridge.
  *  Hosted URLs contain neither token and pass through untouched. */
