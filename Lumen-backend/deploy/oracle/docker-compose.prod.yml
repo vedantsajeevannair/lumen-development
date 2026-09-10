@@ -36,14 +36,21 @@ services:
       # Used by the Caddyfile. A bare IP cannot get a Let's Encrypt certificate,
       # so this must be a real hostname — a free DuckDNS subdomain is fine.
       DOMAIN: ${DOMAIN:?set DOMAIN in .env — Let us Encrypt cannot issue for an IP}
-      TLS_EMAIL: ${TLS_EMAIL:?set TLS_EMAIL in .env — expiry notices go here}
+      # Optional. Set it to receive expiry warnings; leave it empty to register
+      # an anonymous ACME account. Caddy renews on its own either way, so this
+      # only matters as a warning of last resort if renewal has been failing.
+      TLS_EMAIL: ${TLS_EMAIL:-}
     depends_on:
       api:
         condition: service_healthy
 
   api:
     build:
-      context: ../..
+      # Defaults to the repo layout, where this file sits at
+      # Lumen-backend/deploy/oracle/ and the backend root is two levels up.
+      # On the instance the deploy files and the source are copied side by side
+      # instead, so BACKEND_CONTEXT points at wherever the source landed.
+      context: ${BACKEND_CONTEXT:-../..}
       dockerfile: Dockerfile
     restart: always
     # No ports: — Caddy reaches it as http://api:3000 on the compose network.
@@ -57,6 +64,22 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-lumen}:${DB_PASSWORD:?set DB_PASSWORD}@postgres:5432/${DB_NAME:-lumen_db}?schema=public
       REDIS_URL: redis://redis:6379
       FASTAPI_INFERENCE_URL: http://fastapi:8000
+      # Photographs go to MinIO, which speaks the S3 API the StorageService
+      # already uses — so this is configuration, not a code path.
+      #
+      # Two different addresses on purpose. The API uploads over the compose
+      # network, where MinIO is only reachable as http://minio:9000. The browser
+      # (and the CV service, which fetches the image by URL) needs a public
+      # address instead, which Caddy serves at /files. Writing the internal
+      # address into the stored URL would produce links nothing outside the box
+      # can open.
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_PUBLIC_BASE_URL: https://${DOMAIN}/files/${STORAGE_BUCKET_NAME:-lumen-storage}
+      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-lumen-storage}
+      STORAGE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      STORAGE_REGION: us-east-1
+      STORAGE_FORCE_PATH_STYLE: "true"
       # Single instance, so applying migrations at boot is the documented
       # shortcut rather than a race. Revisit if this ever runs more than once.
       RUN_MIGRATIONS_ON_START: "true"
@@ -76,6 +99,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     logging: &logging
       driver: json-file
       options:
@@ -84,22 +109,29 @@ services:
 
   fastapi:
     build:
-      context: ../../server/ai/python
+      context: ${AI_CONTEXT:-../../server/ai/python}
       dockerfile: Dockerfile
     restart: always
     # Not published either. Only the API calls it, over the compose network —
     # which is what makes FASTAPI_API_KEY optional here, exactly as on EKS.
     environment:
       PORT: 8000
-      MODEL_PATH: /app/models/best.pt
+      # ONNX, not .pt — inference runs on onnxruntime against an exported graph.
+      MODEL_PATH: /app/models/best.onnx
       # 2 OCPU on Ampere are two *physical* cores with no SMT, so two threads
       # saturates the box. Four would just add scheduler contention.
       TORCH_NUM_THREADS: 2
+      # Still on, even though nothing outside the box can reach this service:
+      # the URLs it fetches come from user-supplied reports, and the host it
+      # runs on is the same one holding the database.
       PREVENT_SSRF: "True"
-      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.60}
+      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.25}
+      # Belt and braces. The service is unpublished, so this guards only against
+      # something else on the compose network, but it costs nothing to require.
+      FASTAPI_API_KEY: ${FASTAPI_API_KEY:?set FASTAPI_API_KEY}
     volumes:
-      # Weights live on the host, not in the image: a retrained best.pt is a
-      # file copy and a restart, not a rebuild. Drop yours at ./models/best.pt.
+      # Weights live on the host, not in the image: a retrained model is a file
+      # copy and a restart, not a rebuild. Drop yours at ./models/best.onnx.
       - ./models:/app/models:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)\""]
@@ -146,8 +178,36 @@ services:
       retries: 5
     logging: *logging
 
+  minio:
+    # Object storage for complaint photographs, speaking the S3 API the
+    # StorageService already targets — replacing a managed bucket with a
+    # container is a change of endpoint and credentials, not of code.
+    #
+    # Pinned rather than :latest. MinIO has shipped releases that changed
+    # console behaviour and licence terms between tags, and an unpinned image
+    # would pull one of those on the next restart with no warning.
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: always
+    # Not published. Caddy serves public reads at /files; the API writes over
+    # the compose network. Publishing 9000 would put an unauthenticated-read
+    # bucket API straight on the public IP.
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging: *logging
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   caddy_data:
   caddy_config:

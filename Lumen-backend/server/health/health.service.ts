@@ -67,7 +67,7 @@ export class HealthService {
         redis,
         queue,
         firebase: this.checkFirebase(),
-        supabase: this.checkSupabase(),
+        objectStorage: this.checkObjectStorage(),
         mapsApi: this.checkMapsApi(),
       },
       system: this.getSystemHealth(),
@@ -112,11 +112,27 @@ export class HealthService {
     };
   }
 
-  private checkSupabase() {
-    const url = this.configService.get<string>('SUPABASE_URL');
-    const key = this.configService.get<string>('SUPABASE_ANON_KEY');
-    const isConfigured = !!url && !!key;
-    return { status: isConfigured ? 'up' : 'down', configured: isConfigured };
+  /**
+   * Whether photographs have somewhere to go.
+   *
+   * This used to report on SUPABASE_URL/SUPABASE_ANON_KEY, which no longer
+   * describe anything: uploads go through the S3 SDK in common/storage against
+   * whatever STORAGE_ENDPOINT names. On a deployment using MinIO those two
+   * variables are simply absent, and the check reported "down" while uploads
+   * worked perfectly.
+   *
+   * A bucket name is the one setting with no usable default — the endpoint is
+   * optional (absent means AWS itself) and credentials may come from an
+   * instance role rather than the environment.
+   */
+  private checkObjectStorage() {
+    const bucket = this.configService.get<string>('STORAGE_BUCKET_NAME');
+    const endpoint = this.configService.get<string>('STORAGE_ENDPOINT');
+    return {
+      status: bucket ? 'up' : 'down',
+      configured: !!bucket,
+      endpoint: endpoint ?? 'aws',
+    };
   }
 
   private checkMapsApi() {

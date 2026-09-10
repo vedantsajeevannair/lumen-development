@@ -90,10 +90,10 @@ awk -v m="$mem_gb" 'BEGIN { if (m+0 < 5.5) exit 1 }' || \
 
 echo "  public IP      : $(curl -fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null || echo '(could not determine)')"
 
-if [[ -f models/best.pt ]]; then
-  echo "  weights        : $(du -h models/best.pt | cut -f1)"
+if [[ -f models/best.onnx ]]; then
+  echo "  weights        : $(du -h models/best.onnx | cut -f1)"
 else
-  warn "no models/best.pt — the CV service exits at startup without it. The rest of the stack runs fine; bring it up without the fastapi service until you have weights."
+  warn "no models/best.onnx — the CV service exits at startup without it. The rest of the stack runs fine; bring it up without the fastapi service until you have weights. Inference is onnxruntime against an exported graph, so a .pt file is not enough: export it with nms=True and conf=0.001."
 fi
 
 if [[ -f web/index.html ]]; then

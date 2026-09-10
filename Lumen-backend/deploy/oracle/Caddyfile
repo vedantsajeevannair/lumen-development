@@ -11,17 +11,71 @@
 # with an EMPTY VITE_API_BASE_URL so it calls /api on its own origin — the Vite
 # config already supports exactly this arrangement.
 
+# No `email` directive. In Caddy it is a *global* option, not a site-level one —
+# putting it inside the site block fails to parse outright. Left unset, Caddy
+# registers an anonymous ACME account and still obtains and renews certificates
+# normally; the address only buys expiry warnings from Let's Encrypt. To set one,
+# add a global options block above this one:
+#
+#   {
+#       email you@example.com
+#   }
 {$DOMAIN} {
-	email {$TLS_EMAIL}
-
 	encode gzip zstd
 
 	# --- API ------------------------------------------------------------------
 	# The backend owns several top-level prefixes, not just /api. Keep this list
 	# in step with server/main.ts or a route will 404 as a missing static file.
-	@api path /api/* /auth/* /complaints/* /users/* /ai/* /maps/* /analytics/* /audit/* /timeline/* /gamification/* /storage/* /uploads/*
+	# Prefixes the API owns outright. None of these collide with a client route:
+	# the console nests every authenticated page under /app.
+	@api path /api/* /complaints/* /users/* /ai/* /maps/* /analytics/* /audit/* /timeline/* /gamification/* /storage/* /uploads/*
 	handle @api {
 		reverse_proxy api:3000
+	}
+
+	# /auth is the one prefix both sides claim, and only because they now share
+	# an origin — split across two hosts this never came up. The console has page
+	# routes at /auth/login, /auth/register, /auth/verify and
+	# /auth/forgot-password; the API has endpoints at those same paths.
+	#
+	# Method separates them cleanly rather than by luck: every endpoint on
+	# authentication.controller.ts is a POST except GET /auth/me. So writes go to
+	# the API, /auth/me goes to the API, and a plain GET falls through to the SPA
+	# to be rendered as a page.
+	#
+	# Adding a GET endpoint under /auth means adding it here too, or it will
+	# silently return index.html with a 200 instead of the intended JSON.
+	@auth_api {
+		path /auth/*
+		method POST PUT PATCH DELETE
+	}
+	handle @auth_api {
+		reverse_proxy api:3000
+	}
+	handle /auth/me {
+		reverse_proxy api:3000
+	}
+
+	# --- Photographs ----------------------------------------------------------
+	# Public reads from MinIO. The bucket is anonymous-read for this prefix, so
+	# the browser can render a complaint photo and the CV service can fetch it by
+	# URL without either holding a credential.
+	#
+	# GET and HEAD only. MinIO's S3 API is the same endpoint for writes, and
+	# proxying it wholesale would let anyone PUT or DELETE objects — uploads must
+	# go through the API, which authenticates the user first.
+	@files_read {
+		path /files/*
+		method GET HEAD
+	}
+	handle @files_read {
+		uri strip_prefix /files
+		reverse_proxy minio:9000
+	}
+	# Anything else under /files is a write attempt. Refuse it outright rather
+	# than falling through to the SPA and answering 200 with index.html.
+	handle /files/* {
+		respond "Method not allowed" 405
 	}
 
 	# --- Socket.IO ------------------------------------------------------------

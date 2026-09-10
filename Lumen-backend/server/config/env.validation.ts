@@ -10,8 +10,17 @@ export const envSchema = z
     REDIS_HOST: z.string().default('localhost'),
     REDIS_PORT: z.string().default('6379').transform(Number),
     REDIS_URL: z.string().url().optional(),
-    SUPABASE_URL: z.string().url(),
-    SUPABASE_ANON_KEY: z.string().min(1),
+    // Optional, and only a health-check flag. Object storage is reached through
+    // the S3 SDK in common/storage, which talks to whatever STORAGE_ENDPOINT
+    // names — Supabase, MinIO, or S3 itself. Requiring these made the API
+    // refuse to boot on a deployment that had moved off Supabase entirely,
+    // failing on two variables nothing in the request path reads.
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_ANON_KEY: z.string().min(1).optional(),
+    // The bucket the photographs live in. Optional so a deployment without
+    // uploads still starts; the storage service reports its own misconfiguration.
+    STORAGE_BUCKET_NAME: z.string().optional(),
+    STORAGE_ENDPOINT: z.string().url().optional(),
     FIREBASE_PROJECT_ID: z.string().optional(),
     FIREBASE_CLIENT_EMAIL: z.string().email().optional(),
     FIREBASE_PRIVATE_KEY: z.string().optional(),
