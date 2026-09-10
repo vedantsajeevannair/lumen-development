@@ -10,18 +10,29 @@ no AWS account, no Kubernetes, and a live URL in about an hour.
 | Redis (BullMQ + cache) | Render Key Value | free tier |
 | `Lumen-backend` (NestJS) | Render Web Service, Docker | free tier |
 | `Lumen-Web` (Vite SPA) | Vercel | free tier |
-| `Ai-Service` (FastAPI + YOLO) | Google Cloud Run | ~free at low traffic — [step 6](#6-the-ai-service--on-cloud-run) |
+| `Ai-Service` (FastAPI + YOLO) | Oracle Cloud, Always Free ARM | free indefinitely — [`deploy/oracle-ai/`](Lumen-backend/deploy/oracle-ai/README.md) |
 | `Lumen-app` (Expo) | EAS build | free tier |
 
-The AI service is the one piece that cannot go on a free 512 MB instance —
-PyTorch does not fit — which is why it lands on Cloud Run rather than beside the
-backend. See [step 6](#6-the-ai-service--on-cloud-run).
+The AI service is the one piece that cannot go on a free 512 MB instance, which
+is why it gets its own host rather than sitting beside the backend.
 
-Three files drive this and are already in the repo:
+It **now runs on Oracle Cloud**, on an Always Free `VM.Standard.A1.Flex` ARM
+instance. Cloud Run (step 6 below) was the original home and still works, but
+its free tier is a monthly quota — 180k vCPU-seconds — that a busy month can
+exhaust into real charges. Oracle's A1 allowance has no monthly meter, so an
+always-on box costs nothing at any traffic level. Being always-on also removes
+the cold start: the model stays resident, and measured latency (370–950 ms per
+image on 2 ARM cores) matches what Cloud Run's burst CPU delivered.
+
+Step 6 is kept as the Cloud Run alternative. For the live setup see
+[`Lumen-backend/deploy/oracle-ai/README.md`](Lumen-backend/deploy/oracle-ai/README.md).
+
+Four files drive this and are already in the repo:
 
 - [`render.yaml`](render.yaml) — the backend and Redis, as a Render Blueprint
 - [`Lumen-Web/vercel.json`](Lumen-Web/vercel.json) — SPA routing and cache headers
-- [`Lumen-backend/deploy/cloudrun/deploy-ai.sh`](Lumen-backend/deploy/cloudrun/deploy-ai.sh) — the AI service
+- [`Lumen-backend/deploy/oracle-ai/`](Lumen-backend/deploy/oracle-ai/README.md) — the AI service on Oracle (current)
+- [`Lumen-backend/deploy/cloudrun/deploy-ai.sh`](Lumen-backend/deploy/cloudrun/deploy-ai.sh) — the AI service on Cloud Run (alternative)
 
 ## Do the steps in this order
 
@@ -161,7 +172,14 @@ call fails in the browser console with a CORS error while the same request
 succeeds from `curl`. The mobile app is unaffected — native builds send no
 `Origin` header.
 
-## 6. The AI service — on Cloud Run
+## 6. The AI service — on Cloud Run (alternative)
+
+> The live deployment moved to Oracle Cloud, where the free tier has no monthly
+> quota to exhaust — see
+> [`Lumen-backend/deploy/oracle-ai/README.md`](Lumen-backend/deploy/oracle-ai/README.md).
+> This section still works and is the better fit if you would rather not run a
+> box: Cloud Run scales to zero and needs no patching, at the cost of a cold
+> start and a metered free tier that bills once exceeded.
 
 **The rest of the platform runs without it.** `FASTAPI_INFERENCE_URL` is read
 per-request rather than at boot, so with the AI service absent the backend stays
@@ -335,18 +353,26 @@ Run this means `models/best.pt` was missing from the build context.
 | Render Key Value | 25 MB | no | ~$10/mo |
 | Render backend | sleeps after 15 min idle | no | $7/mo (Starter, always on) |
 | Vercel | 100 GB bandwidth | no | $20/mo |
-| Cloud Run (AI) | ~180k vCPU-s + 360k GiB-s/mo | **yes** | pay-per-use beyond it |
+| Oracle A1 (AI) — **current** | 4 OCPU / 24 GB / 200 GB, no monthly meter | card to verify, never charged | nothing to outgrow at this scale |
+| Cloud Run (AI) — alternative | ~180k vCPU-s + 360k GiB-s/mo | **yes** | pay-per-use beyond it |
 
 **Steps 1–5 cost nothing and need no payment method.** That is Postgres, Redis,
 the API and the web console — a working, publicly reachable LUMEN. Do those
 first; they are the whole platform except inference.
 
-Cloud Run is the only piece that wants a card on file, and Google requires a
-billing account even to stay inside the free allowance. At the script's 2 vCPU /
-2 GiB that allowance works out to roughly 25 hours of *active* compute per month
-— vCPU-seconds run out before memory does — and scale-to-zero means an idle
-service burns none of it. Comfortable for a demo, and nothing to pay if you stay
-under.
+The AI service is the only piece that wants a card. Oracle asks for one to
+verify the account and does not charge Always Free resources; Google requires an
+active billing account even to stay inside the free allowance.
+
+The live deployment uses **2 of the 4 free A1 OCPUs** (12 GB RAM, 50 GB boot),
+leaving the other half for the platform's second instance. Because the
+allowance is a standing capacity grant rather than a monthly quota, traffic
+volume does not move the bill — it stays ₹0.
+
+On Cloud Run the same workload at 1 vCPU / 2 GiB gets roughly 50 hours of
+*active* compute per month — vCPU-seconds run out before memory does — and
+scale-to-zero means an idle service burns none of it. Fine for a demo, but it is
+a meter, and it bills once exceeded.
 
 Two options if you would rather not attach a card at all:
 

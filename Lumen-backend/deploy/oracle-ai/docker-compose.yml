@@ -1,0 +1,56 @@
+# LUMEN AI inference service on an Oracle Always Free ARM instance.
+#
+# Why this instead of Cloud Run: the A1 shape is free indefinitely, where Cloud
+# Run's free tier is a monthly quota that a busy month can exhaust. The trade is
+# that this box is always on, so there is no scale-to-zero and no cold start —
+# the model stays resident and the first request of the day is as fast as the
+# hundredth.
+services:
+  ai:
+    build: ./app
+    restart: unless-stopped
+    env_file: .env
+    # Deliberately no `ports:` — the service is reachable only through Caddy, so
+    # the API key is never accepted over plaintext on port 8000. The instance
+    # firewall does not open 8000 either; this is the second layer.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    # 2 OCPU / 12 GB is the whole box, but the model plus a decoded image is
+    # well under 4 GB and leaving headroom means a runaway request cannot take
+    # Caddy down with it.
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Caddy expands {$AI_HOSTNAME} in the Caddyfile from its own environment.
+    # Compose reads the value out of the .env file beside this one, so the
+    # hostname is configured in exactly one place.
+    environment:
+      AI_HOSTNAME: ${AI_HOSTNAME:?set AI_HOSTNAME in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - ai
+
+volumes:
+  # Named volume, not a bind mount: this holds the issued certificate and the
+  # ACME account key. Losing it on every recreate would re-request a cert and
+  # walk straight into Let's Encrypt's duplicate-certificate rate limit.
+  caddy_data:
+  caddy_config:

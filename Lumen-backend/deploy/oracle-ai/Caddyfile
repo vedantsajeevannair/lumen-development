@@ -1,0 +1,32 @@
+# {$AI_HOSTNAME} is substituted by setup.sh from the instance's public IP, as
+# <ip>.sslip.io — sslip.io answers any A-record query with the IP embedded in
+# the name, which gives this box a real DNS name without owning a domain.
+#
+# That name is what makes automatic HTTPS possible: Let's Encrypt will not issue
+# for a bare IP, and the backend on Render would otherwise have to send the
+# shared API key over plaintext HTTP across the public internet. sslip.io is on
+# the Public Suffix List, so each <ip>.sslip.io counts as its own registered
+# domain for rate-limiting and this cert does not compete with every other
+# sslip.io user's.
+{$AI_HOSTNAME} {
+	reverse_proxy ai:8000 {
+		# Inference on 2 ARM cores is slower than on Cloud Run's burst CPU, and
+		# a video request scores up to 100 frames. Caddy's 30s default would cut
+		# those off mid-batch; the backend's own client timeout is the real
+		# limit, this just stops being the thing that fails first.
+		transport http {
+			response_header_timeout 180s
+		}
+	}
+
+	# The health endpoint is unauthenticated by design, so keep it out of the
+	# access log — an always-on box gets polled constantly and it is pure noise.
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 3
+		}
+	}
+
+	encode gzip
+}
