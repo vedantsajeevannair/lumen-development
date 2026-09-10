@@ -11,6 +11,20 @@
  *  `severity = min(5.0, avg_confidence * 3 + boxes * 0.5)`). */
 export const SEVERITY_SCALE_MAX = 5;
 
+/**
+ * Two reports of the same defect closer together than this are the same defect.
+ *
+ * 20 m is roughly GPS error on a phone plus the length of a pothole, so it
+ * catches "three people photographed the same crater" without merging two
+ * genuinely separate defects on opposite sides of a junction.
+ *
+ * Not to be confused with the 30 m window in ai/ai.repository.ts. That one does
+ * not reject anything — it counts nearby reports of the same class to escalate
+ * priority, on the reasoning that a defect several people report is worth
+ * fixing sooner. This constant is the narrower "already reported" test.
+ */
+export const DUPLICATE_RADIUS_METERS = 20;
+
 export type SeverityBand =
   'SEVERE' | 'SIGNIFICANT' | 'MODERATE' | 'MINOR' | 'NONE';
 

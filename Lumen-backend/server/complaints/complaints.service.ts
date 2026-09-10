@@ -14,6 +14,7 @@ import type { User, Complaint, Prisma } from '@prisma/client';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { AiService } from '../ai/ai.service';
 import { StorageService } from '../common/storage/storage.service';
+import { findNearbyDuplicates } from '../common/geo/duplicate-check';
 
 @Injectable()
 export class ComplaintsService {
@@ -108,19 +109,24 @@ export class ComplaintsService {
       throw new BadRequestException(e.message || 'Image validation failed');
     }
 
-    // Phase 2: Geographic Duplicate Detection (PostGIS logic equivalent)
-    // 20 meters = 0.02 km
-    const nearby = await this.findNearby(
+    // Phase 2: Geographic Duplicate Detection
+    //
+    // Shared with the web console's intake path so the two cannot drift. This
+    // used to filter findNearby's results in Node with an exact `===` on
+    // category, which missed every complaint the AI had already relabelled
+    // ('Pothole' on intake becomes 'POTHOLE' after detection).
+    const duplicates = await findNearbyDuplicates(
+      this.prisma,
       createComplaintDto.latitude,
       createComplaintDto.longitude,
-      0.02,
+      createComplaintDto.category,
     );
-    const hasDuplicate = nearby.some(
-      (c: any) => c.category === createComplaintDto.category,
-    );
-    if (hasDuplicate) {
+    if (duplicates.length > 0) {
+      const nearest = duplicates[0];
       throw new BadRequestException(
-        'A similar issue has already been reported at this exact location.',
+        `A similar issue has already been reported ${Math.round(
+          nearest.distanceMeters,
+        )} m away (${nearest.trackingId}).`,
       );
     }
 

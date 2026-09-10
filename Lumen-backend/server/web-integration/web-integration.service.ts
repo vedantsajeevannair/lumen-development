@@ -15,6 +15,7 @@ import { Role, ComplaintStatus, Priority } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { StorageService } from '../common/storage/storage.service';
 import { AiService } from '../ai/ai.service';
+import { findNearbyDuplicates } from '../common/geo/duplicate-check';
 
 export type AssignComplaint = {
   id: string;
@@ -745,6 +746,38 @@ export class WebIntegrationService implements OnModuleInit {
     userId: string,
     photo?: Express.Multer.File,
   ) {
+    // Duplicate check first, before the photograph is uploaded. Rejecting the
+    // report after the upload would leave the file orphaned in the bucket with
+    // no row pointing at it and nothing to clean it up.
+    //
+    // Only when the client actually sent coordinates. The columns below fall
+    // back to a fixed city-centre point when it did not, and running the check
+    // against that shared default would make every coordinate-less report a
+    // duplicate of the first one.
+    const hasCoords =
+      body.lat !== undefined &&
+      body.lat !== null &&
+      body.lng !== undefined &&
+      body.lng !== null;
+    const category = body.category || 'Pothole';
+
+    if (hasCoords) {
+      const duplicates = await findNearbyDuplicates(
+        this.prisma,
+        Number(body.lat),
+        Number(body.lng),
+        category,
+      );
+      if (duplicates.length > 0) {
+        const nearest = duplicates[0];
+        throw new BadRequestException(
+          `A ${category.toLowerCase()} was already reported ${Math.round(
+            nearest.distanceMeters,
+          )} m away (${nearest.trackingId}). If this is a different defect, move the pin further from the existing report.`,
+        );
+      }
+    }
+
     // The photograph is the evidence the whole pipeline runs on: the AI service
     // fetches it by URL, so it has to be somewhere reachable before the
     // complaint exists. Fail with the reason rather than storing a placeholder
@@ -776,7 +809,7 @@ export class WebIntegrationService implements OnModuleInit {
         trackingId: nextRef,
         title: body.title,
         description: body.description || body.title,
-        category: body.category || 'Pothole',
+        category,
         priority: (body.priority || 'MEDIUM') as Priority,
         status: ComplaintStatus.PENDING,
         latitude: body.lat ? Number(body.lat) : 12.9716,
