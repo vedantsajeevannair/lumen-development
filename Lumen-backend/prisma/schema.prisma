@@ -4,8 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -35,34 +35,35 @@ enum Department {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String?
-  role      Role     @default(CITIZEN)
-  phoneNumber String?
-  fullName  String?
-  isActive  Boolean  @default(true)
-  isVerified Boolean @default(false)
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  password           String?
+  role               Role               @default(CITIZEN)
+  phoneNumber        String?
+  fullName           String?
+  isActive           Boolean            @default(true)
+  isVerified         Boolean            @default(false)
   verificationStatus VerificationStatus @default(UNVERIFIED)
-  verificationDocs Json?
-  biometricEnabled Boolean @default(false)
-  biometricHash    String?
-  isDeleted Boolean  @default(false)
-  civicScore Int @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  verificationDocs   Json?
+  biometricEnabled   Boolean            @default(false)
+  biometricHash      String?
+  isDeleted          Boolean            @default(false)
+  civicScore         Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   preferences       Json?
   savedLocations    Json?
   emergencyContacts Json?
   fcmToken          String?
 
-  reportedComplaints Complaint[]         @relation("ReportedComplaints")
-  performedActions   ComplaintTimeline[] @relation("PerformedActions")
+  reportedComplaints Complaint[]          @relation("ReportedComplaints")
+  performedActions   ComplaintTimeline[]  @relation("PerformedActions")
   payments           PaymentTransaction[]
   auditLogs          AuditLog[]
   refreshTokens      RefreshToken[]
   badges             UserBadge[]
+  notifications      Notification[]
 
   @@map("users")
 }
@@ -109,7 +110,6 @@ enum ComplaintStatus {
   REJECTED
 }
 
-
 enum MediaType {
   ORIGINAL
   PROCESSED
@@ -132,70 +132,82 @@ model ComplaintMedia {
 }
 
 model Complaint {
-  id          String   @id @default(uuid())
-  trackingId  String   @unique
+  id          String          @id @default(uuid())
+  trackingId  String          @unique
   title       String
   description String
   category    String
-  priority    Priority @default(MEDIUM)
+  priority    Priority        @default(MEDIUM)
   status      ComplaintStatus @default(PENDING)
-  isAnonymous Boolean @default(false)
-  
-  latitude    Float?
-  longitude   Float?
-  accuracy    Float?
-  capturedAt  DateTime?
-  
-  confidence  Float?
-  severity    Float?
+  isAnonymous Boolean         @default(false)
 
-  imageUrl    String
-  videoUrl    String?
-  
-  reporterId  String?
-  reporter    User?     @relation("ReportedComplaints", fields: [reporterId], references: [id])
+  latitude   Float?
+  longitude  Float?
+  accuracy   Float?
+  capturedAt DateTime?
+
+  confidence Float?
+  severity   Float?
+
+  imageUrl String
+  videoUrl String?
+
+  /// BITUMINOUS | CONCRETE. Chosen by the engineer when recording site
+  /// measurements; it selects which material rates the estimate uses, so it
+  /// cannot be inferred from the photograph.
+  roadType   String?
+  /// Set when a resident says the repair did not actually happen. Kept
+  /// alongside the timeline entry because the queue needs to sort on it
+  /// without joining every event.
+  reopenedAt DateTime?
+  closedAt   DateTime?
+
+  reporterId String?
+  reporter   User?   @relation("ReportedComplaints", fields: [reporterId], references: [id])
 
   aiPrediction AiPrediction?
 
-  media       ComplaintMedia[]
+  media ComplaintMedia[]
 
-  timeline    ComplaintTimeline[]
+  timeline        ComplaintTimeline[]
   dispatchRecords DispatchRecord[]
+  potholes        PotholeMeasurement[]
+  notifications   Notification[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("complaints")
 }
 
 model AiPrediction {
-  id              String      @id @default(uuid())
-  complaintId     String      @unique
-  complaint       Complaint   @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  id              String    @id @default(uuid())
+  complaintId     String    @unique
+  complaint       Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   damageClass     String
   confidenceScore Float
-  boundingBoxes   Json        
-  metadata        Json        
-  status          String      
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  boundingBoxes   Json
+  metadata        Json
+  status          String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@map("ai_predictions")
 }
 
 model ComplaintTimeline {
-  id          String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   complaintId String
   complaint   Complaint @relation(fields: [complaintId], references: [id])
-  
-  status      ComplaintStatus
-  notes       String?
-  
-  performedById String
-  performedBy   User     @relation("PerformedActions", fields: [performedById], references: [id])
 
-  createdAt   DateTime @default(now())
+  status ComplaintStatus
+  notes  String?
+
+  performedById String
+  performedBy   User   @relation("PerformedActions", fields: [performedById], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@map("complaint_timelines")
 }
@@ -223,37 +235,36 @@ model UserBadge {
   @@map("user_badges")
 }
 
-
 model AuditLog {
-  id          String   @id @default(uuid())
-  action      String
-  entity      String
-  entityId    String?
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  details     Json?
-  
+  id       String  @id @default(uuid())
+  action   String
+  entity   String
+  entityId String?
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  details  Json?
+
   device      String?
   os          String?
   appVersion  String?
   ipAddress   String?
   gpsLocation Json?
-  status      String   @default("SUCCESS")
-  
-  createdAt   DateTime @default(now())
+  status      String  @default("SUCCESS")
+
+  createdAt DateTime @default(now())
 
   @@map("audit_logs")
 }
 
 model DispatchRecord {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   complaintId String
   complaint   Complaint @relation(fields: [complaintId], references: [id])
-  
-  department  Department
-  assignedAt  DateTime @default(now())
+
+  department            Department
+  assignedAt            DateTime   @default(now())
   estimatedResolutionAt DateTime?
-  
+
   @@map("dispatch_records")
 }
 
@@ -272,22 +283,75 @@ enum PaymentType {
 }
 
 model PaymentTransaction {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  
-  amount      Float
-  currency    String   @default("INR")
-  status      PaymentStatus @default(PENDING)
-  type        PaymentType
-  
-  receiptUrl  String?
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  amount   Float
+  currency String        @default("INR")
+  status   PaymentStatus @default(PENDING)
+  type     PaymentType
+
+  receiptUrl    String?
   transactionId String? @unique
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("payment_transactions")
 }
 
-                                              
+/// One measured pothole within a complaint.
+///
+/// Detection says a pothole exists; it does not say what to put in the truck.
+/// These are the geometry an engineer records on site (or, flagged ESTIMATED,
+/// what dimensions.ts reads off the photograph) and they are what the material
+/// estimate is computed from.
+model PotholeMeasurement {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  /// P1, P2 … within the complaint.
+  label      String
+  lengthM    Float
+  widthM     Float
+  depthM     Float
+  /// lengthM × widthM × depthM, stored so the estimate never re-derives it.
+  volumeM3   Float
+  /// 2 × (lengthM + widthM).
+  perimeterM Float
+
+  recordedBy String
+  recordedAt DateTime @default(now())
+
+  /// ESTIMATED (from the photograph) | MEASURED (on site). Everything
+  /// downstream shows which, so a planning figure is never read as a survey.
+  source String @default("MEASURED")
+
+  @@index([complaintId])
+  @@map("pothole_measurements")
+}
+
+/// An in-app notification for one user.
+///
+/// Distinct from the push notifications the dispatch flow sends: those leave
+/// the system, these are the bell in the console and have to survive a reload,
+/// so they are rows rather than socket events.
+model Notification {
+  id          String     @id @default(uuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  complaintId String?
+  complaint   Complaint? @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  /// ASSIGNED | STARTED | COMPLETED | CLOSED | REJECTED | REOPENED | VERIFY_FAILED
+  type    String
+  message String
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
