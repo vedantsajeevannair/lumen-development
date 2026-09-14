@@ -85,6 +85,11 @@ services:
       # second hardcoded threshold would silently drift from the one inference
       # actually ran at.
       CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.25}
+      # The assistant's fallback model. Reached over the compose network; there
+      # is no API key and no per-request cost, which is the whole reason this
+      # runs locally rather than against a hosted model.
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
       # Single instance, so applying migrations at boot is the documented
       # shortcut rather than a race. Revisit if this ever runs more than once.
       RUN_MIGRATIONS_ON_START: "true"
@@ -210,9 +215,46 @@ services:
       start_period: 20s
     logging: *logging
 
+  ollama:
+    # The assistant's language-model fallback, reached only when the parser
+    # cannot classify a question. Everything it says is grounded on a snapshot
+    # the API queries first, so a small model is sufficient — it is writing the
+    # sentence around figures it has been handed, not recalling them.
+    #
+    # llama3.2:1b on purpose. The box has two Ampere cores and no GPU: the 1B
+    # model generates at ~15 tokens/sec here, answering inside the client's 60s
+    # timeout, where an 8B model would not finish a reply before it expired.
+    image: ollama/ollama:0.34.0
+    restart: always
+    # Not published. Only the API calls it, over the compose network — an
+    # unauthenticated model endpoint on the public IP would be someone else's
+    # free inference.
+    environment:
+      # Keep the model resident between questions. Ollama unloads after five
+      # minutes by default, and on these cores reloading costs more than the
+      # answer does. ~1.5 GB held against 10 GB free is a good trade.
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          # Generous headroom over the model's working set, but bounded: a
+          # runaway here must not take Postgres down with it.
+          memory: 4G
+    logging: *logging
+
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  ollama_models:
   caddy_data:
   caddy_config:

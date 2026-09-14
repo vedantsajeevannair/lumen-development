@@ -36,6 +36,7 @@ import { AiTriageModule } from './ai-triage/ai-triage.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { WebIntegrationModule } from './web-integration/web-integration.module';
 import { FieldOpsModule } from './field-ops/field-ops.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 @Module({
   imports: [
@@ -152,6 +153,7 @@ import { FieldOpsModule } from './field-ops/field-ops.module';
     GamificationModule,
     WebIntegrationModule,
     FieldOpsModule,
+    AssistantModule,
   ],
   controllers: [AppController],
   providers: [
