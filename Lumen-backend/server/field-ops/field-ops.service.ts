@@ -211,7 +211,24 @@ export class FieldOpsService {
 
     // severity is 0–5 here; depthForSeverity bands on 0–100.
     const severityPct = ((complaint.severity ?? 0) / 5) * 100;
-    const potholes = suggestDimensions(detections, severityPct);
+
+    // Pass our own operating threshold rather than letting suggestDimensions
+    // apply its default of 0.35. That default was calibrated against a
+    // different detector; ours scores lower on the same defect, which is why
+    // the CV service runs at 0.25. Left alone, a real pothole detected at
+    // 0.349 was discarded here by 0.001 and the page reported "no regions
+    // confident enough" for a photograph with a visible hole in it.
+    //
+    // Read from the environment so this tracks CONFIDENCE_THRESHOLD on the CV
+    // service instead of drifting from it as a second hardcoded number.
+    const minConfidence = Number(process.env.CONFIDENCE_THRESHOLD ?? 0.25);
+
+    const potholes = suggestDimensions(
+      detections,
+      severityPct,
+      ['Pothole'],
+      Number.isFinite(minConfidence) ? minConfidence : 0.25,
+    );
 
     if (potholes.length === 0) {
       throw new BadRequestException(

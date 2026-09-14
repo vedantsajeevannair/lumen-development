@@ -80,6 +80,11 @@ services:
       STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
       STORAGE_REGION: us-east-1
       STORAGE_FORCE_PATH_STYLE: "true"
+      # Shared with the CV service below, deliberately from one variable. The
+      # API filters detections again when estimating pothole dimensions, and a
+      # second hardcoded threshold would silently drift from the one inference
+      # actually ran at.
+      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.25}
       # Single instance, so applying migrations at boot is the documented
       # shortcut rather than a race. Revisit if this ever runs more than once.
       RUN_MIGRATIONS_ON_START: "true"
