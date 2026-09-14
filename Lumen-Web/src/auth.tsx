@@ -1,6 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "./lib/api";
-import { session, setSessionExpiredHandler } from "./lib/session";
 
 export type SessionUser = {
   sub: string;
@@ -10,129 +9,91 @@ export type SessionUser = {
   departmentId: string | null;
 };
 
-export type RegisterInput = {
-  fullName: string;
-  phoneNumber: string;
-  email: string;
-  password: string;
+/**
+ * The API returns a user row, not a session claim set.
+ *
+ * This console was written against a backend that set an HttpOnly cookie and
+ * echoed a session object shaped { sub, name, departmentId }. The NestJS API
+ * returns a JWT in the body and a user row with { id, fullName } and no
+ * department. Without this mapping `user.name` is undefined, and the first
+ * component to render a set of initials crashes the tree — which showed up as
+ * a blank page immediately after a successful login.
+ */
+function toSessionUser(raw: any): SessionUser | null {
+  if (!raw) return null;
+  return {
+    sub: raw.sub ?? raw.id,
+    email: raw.email,
+    name: raw.name ?? raw.fullName ?? raw.email,
+    role: raw.role,
+    departmentId: raw.departmentId ?? null,
+  };
+}
+
+/**
+ * Where the access token lives.
+ *
+ * lib/api.ts already reads localStorage["token"] on every request — nothing
+ * ever wrote it, because the original backend authenticated with a cookie the
+ * browser sent automatically. These two functions are the missing half.
+ */
+const TOKEN_KEY = 'token';
+const setToken = (t: string | null) => {
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* private browsing: the session simply will not persist a reload */
+  }
 };
 
 type AuthCtx = {
   user: SessionUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  /** Citizen self-service signup. Sends an OTP; does not create a session. */
-  register: (input: RegisterInput) => Promise<void>;
-  /** Completes signup — the backend returns tokens, so this signs the user in. */
-  verifyOtp: (email: string, otp: string) => Promise<SessionUser | null>;
-  resendOtp: (email: string) => Promise<void>;
-  forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx>(null as unknown as AuthCtx);
 export const useAuth = () => useContext(Ctx);
 
-/** The backend returns the raw Prisma user; the UI wants a flat session shape.
- *  ADMIN / SUPER_ADMIN both present as ADMINISTRATOR in the operator console. */
-function mapUser(dbUser: any): SessionUser | null {
-  if (!dbUser) return null;
-  const role =
-    dbUser.role === "ADMIN" || dbUser.role === "SUPER_ADMIN" ? "ADMINISTRATOR" : dbUser.role;
-  return {
-    sub: dbUser.id || dbUser.sub,
-    email: dbUser.email,
-    name: dbUser.fullName || dbUser.name || "",
-    role,
-    departmentId: dbUser.departmentId || null,
-  };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // api.ts calls this when a refresh fails and the session cannot be renewed.
-  // Clearing the user here is what bounces the app back to /auth/login.
-  const handleExpired = useCallback(() => setUser(null), []);
-
   useEffect(() => {
-    setSessionExpiredHandler(handleExpired);
-    return () => setSessionExpiredHandler(null);
-  }, [handleExpired]);
+    // Skip the probe when there is no token: /auth/me would 401, and on a
+    // public page that is a guaranteed console error for every visitor.
+    let hasToken = false;
+    try { hasToken = !!localStorage.getItem(TOKEN_KEY); } catch { /* ignore */ }
+    if (!hasToken) { setUser(null); setLoading(false); return; }
 
-  useEffect(() => {
-    // No stored access token means no session to restore. A stale token is
-    // fine — api.get transparently refreshes it before this resolves.
-    if (!session.getAccessToken()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-    api
-      .get("/auth/me")
-      .then((d) => setUser(mapUser(d.user)))
-      .catch(() => {
-        session.clear();
-        setUser(null);
-      })
+    api.get("/auth/me")
+      .then((d) => setUser(toSessionUser(d.user)))
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
   async function login(email: string, password: string) {
     const d = await api.post("/auth/login", { email, password });
-    if (!d.access_token) throw new Error("No access token returned.");
-    // Persist the refresh token too — without it the session dies silently
-    // when the short-lived access token expires.
-    session.save(d);
-    setUser(mapUser(d.user));
+    // access_token, not token — the API uses snake_case here.
+    setToken(d.access_token ?? d.accessToken ?? null);
+    setUser(toSessionUser(d.user));
   }
-
+  // Sign-up signs you straight in — the server sets the session cookie on the
+  // same response, so a new resident never has to type their password twice.
+  async function register(name: string, email: string, password: string) {
+    // Registration here does not sign you in: the API emails a one-time code
+    // and the account stays unverified until it is entered. Returning without
+    // a user is correct, and the caller shows the "check your email" state.
+    await api.post("/auth/register", { fullName: name, email, password });
+  }
   async function logout() {
-    // Hand the refresh token back so the backend can revoke that row rather
-    // than leaving it valid until it expires on its own.
-    const refreshToken = session.getRefreshToken();
-    await api.post("/auth/logout", refreshToken ? { refreshToken } : undefined).catch(() => {});
-    session.clear();
+    await api.post("/auth/logout").catch(() => {});
+    setToken(null);
     setUser(null);
   }
 
-  // Signup, OTP and password-reset live on the backend's root /auth controller
-  // (shared with the mobile app), not under the web-integration /api prefix.
-  const ROOT = { root: true } as const;
-
-  async function register(input: RegisterInput) {
-    await api.post("/auth/register", input, ROOT);
-  }
-
-  async function verifyOtp(email: string, otp: string) {
-    const d = await api.post("/auth/verify-otp", { email, otp }, ROOT);
-    if (!d?.access_token) throw new Error("Verification did not return a session.");
-    session.save(d);
-    const mapped = mapUser(d.user);
-    setUser(mapped);
-    return mapped;
-  }
-
-  async function resendOtp(email: string) {
-    await api.post("/auth/resend-otp", { email }, ROOT);
-  }
-
-  async function forgotPassword(email: string) {
-    await api.post("/auth/forgot-password", { email }, ROOT);
-  }
-
-  async function resetPassword(email: string, otp: string, newPassword: string) {
-    await api.post("/auth/reset-password", { email, otp, newPassword }, ROOT);
-  }
-
-  return (
-    <Ctx.Provider
-      value={{ user, loading, login, logout, register, verifyOtp, resendOtp, forgotPassword, resetPassword }}
-    >
-      {children}
-    </Ctx.Provider>
-  );
+  return <Ctx.Provider value={{ user, loading, login, register, logout }}>{children}</Ctx.Provider>;
 }

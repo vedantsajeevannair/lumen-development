@@ -1,190 +1,212 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Route, TrendingDown, CheckCircle2, AlertCircle, Sparkles, Info } from "lucide-react";
+import { HardHat, Check, X, TrendingDown, Play } from "lucide-react";
 import { api } from "../lib/api";
 import { useApi } from "../lib/useApi";
-import { PageHeader, Card, KpiCard, EmptyState, Button, SkeletonKpis, Skeleton, Th, Td } from "../components/ui";
+import { PageHeader, Card } from "../components/ui";
 import { PriorityBadge } from "../components/badges";
 
 type Assignment = {
-  complaint: { id: string; ref: string; category: string; severityScore: number };
-  engineer: { code: string; name: string; openJobs: number };
+  complaint: { id: string; ref: string; title: string; category: string; priority: string; severityScore: number };
+  engineer: { id: string; code: string; name: string; zone: string; openJobs: number };
   distanceKm: number; cost: number; skillMatch: boolean;
 };
-type Result = {
-  assignments: Assignment[]; unassigned: unknown[];
-  totalCost: number; naiveTotalCost: number; costImprovementPct: number;
-  totalDistanceKm: number; naiveTotalDistanceKm: number;
+type Plan = {
+  assignments: Assignment[];
+  unassigned: { ref: string; title: string; reason: string }[];
+  totalCost: number; totalDistanceKm: number;
+  naiveTotalCost: number; naiveTotalDistanceKm: number; naiveAssigned: number;
+  costImprovementPct: number; engineersConsidered: number;
 };
-type Data = { result: Result; titles: Record<string, { title: string; priority: string }>; engineerCount: number };
 
+/**
+ * Engineer dispatch — Hungarian minimum-cost matching.
+ *
+ * The greedy baseline is shown beside the optimal answer because that
+ * comparison is the point. Both allocate the same number of jobs under the
+ * same one-engineer-one-job rule, so the difference between them is the
+ * algorithm rather than an artefact of counting.
+ */
 export function Assignment() {
-  const { data, loading, error, reload } = useApi<Data>("/assignment");
+  const { data, loading, reload } = useApi<Plan>("/assignment");
   const [applying, setApplying] = useState(false);
-
-  const header = (
-    <PageHeader
-      eyebrow="Operations"
-      title="Assignment Optimiser"
-      subtitle="Hungarian algorithm (Kuhn–Munkres) minimising total cost across all open complaints simultaneously"
-    />
-  );
-
-  if (loading) {
-    return (
-      <>
-        {header}
-        <SkeletonKpis />
-        <Skeleton className="mt-6 h-96 rounded-2xl" />
-      </>
-    );
-  }
-  if (error || !data) {
-    return <>{header}<EmptyState icon={Route} title="Assignment optimiser unavailable" hint={error || "This backend does not expose assignment data yet."} /></>;
-  }
-
-  const { result: r, titles, engineerCount } = data;
+  const [applied, setApplied] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function apply() {
-    setApplying(true);
-    try { await api.post("/assignment/apply"); reload(); } finally { setApplying(false); }
+    setApplying(true); setError(null);
+    try {
+      const r = await api.post("/assignment/apply", {}) as { applied: number };
+      setApplied(r.applied);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not apply the assignment.");
+    } finally { setApplying(false); }
   }
-
-  const improved = r.costImprovementPct > 0;
 
   return (
     <>
-      {header}
+      <PageHeader
+        title="Assignment Optimiser"
+        subtitle="Dispatch unassigned complaints to engineers · Hungarian algorithm on distance, skill match, current workload and severity"
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="Unassigned" value={r.assignments.length + r.unassigned.length}
-          sub={`${engineerCount} engineer${engineerCount === 1 ? "" : "s"} available`} icon={AlertCircle} tone="brand"
-        />
-        <KpiCard
-          label="Optimised Cost" value={r.totalCost.toFixed(2)}
-          sub={`Hungarian O(n³) · ${r.totalDistanceKm} km travel`} icon={Route} tone="green"
-        />
-        <KpiCard
-          label="Greedy Baseline" value={r.naiveTotalCost.toFixed(2)}
-          sub={`Nearest-free heuristic · ${r.naiveTotalDistanceKm} km`} icon={Route} tone="slate"
-        />
-        <KpiCard
-          label="Cost Reduction" value={improved ? `${r.costImprovementPct}%` : "0%"}
-          sub={improved ? "lower objective than baseline" : "baseline already optimal"}
-          icon={TrendingDown} tone={improved ? "green" : "slate"}
-          progress={improved ? r.costImprovementPct : 0}
-        />
-      </div>
+      {loading && !data && <p className="text-slate-400">Computing the allocation…</p>}
 
-      {r.assignments.length === 0 ? (
-        <div className="mt-6">
-          <EmptyState
-            icon={Sparkles}
-            title="No complaints awaiting assignment"
-            hint="Create a complaint, or check that submitted complaints are not all flagged as duplicates."
-          />
-        </div>
-      ) : (
+      {data && (
         <>
-          <Card
-            title="Proposed Assignment Plan"
-            subtitle={`${r.assignments.length} complaint${r.assignments.length === 1 ? "" : "s"} matched to the globally cheapest engineer`}
-            className="mt-6"
-            flush
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50/80">
-                  <tr>
-                    <Th>Complaint</Th>
-                    <Th>Priority</Th>
-                    <Th>Assigned Engineer</Th>
-                    <Th className="text-right">Distance</Th>
-                    <Th>Skill</Th>
-                    <Th className="text-right">Cost</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {r.assignments.map((a) => (
-                    <tr key={a.complaint.id} className="transition hover:bg-brand-50/40">
-                      <Td className="max-w-xs">
-                        <Link to={`/app/complaints/${a.complaint.ref}`} className="font-mono text-xs font-bold text-brand-700 hover:underline">
-                          {a.complaint.ref}
-                        </Link>
-                        <p className="truncate font-medium text-slate-800">{titles[a.complaint.id]?.title}</p>
-                        <span className="text-xs text-slate-400">
-                          {a.complaint.category} · severity {a.complaint.severityScore.toFixed(1)}
-                        </span>
-                      </Td>
-                      <Td><PriorityBadge priority={titles[a.complaint.id]?.priority ?? "LOW"} /></Td>
-                      <Td>
-                        <div className="font-semibold text-slate-800">{a.engineer.name}</div>
-                        <div className="text-xs text-slate-500">
-                          <span className="font-mono">{a.engineer.code}</span> · {a.engineer.openJobs} open job{a.engineer.openJobs === 1 ? "" : "s"}
-                        </div>
-                      </Td>
-                      <Td className="tnum whitespace-nowrap text-right font-semibold text-slate-700">{a.distanceKm} km</Td>
-                      <Td>
-                        {a.skillMatch ? (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                            <CheckCircle2 size={12} /> Match
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-lg bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
-                            Penalty
-                          </span>
-                        )}
-                      </Td>
-                      <Td className="tnum text-right font-mono text-xs text-slate-500">{a.cost}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-4">
-              <Button onClick={apply} busy={applying} icon={Sparkles} size="lg">
-                {applying ? "Applying…" : `Apply ${r.assignments.length} Assignment${r.assignments.length === 1 ? "" : "s"}`}
-              </Button>
-              <span className="text-xs text-slate-400">
-                Writes each assignment, logs it to the timeline and records the audit entry.
-              </span>
-            </div>
-          </Card>
-
-          <Card title="Cost Model" subtitle="How each (complaint, engineer) pair is priced" className="mt-6">
-            <div className="grid gap-6 text-sm lg:grid-cols-2">
-              <div>
-                <p className="leading-relaxed text-slate-600">
-                  Each pair is priced, then the Hungarian algorithm finds the globally
-                  minimum-cost matching in O(n³) — not the locally-greedy choice.
+          {data.assignments.length === 0 ? (
+            <Card>
+              <div className="py-8 text-center">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100">
+                  <HardHat size={20} className="text-slate-400" />
+                </div>
+                <p className="mt-3 text-sm font-medium text-slate-800">Nothing to dispatch</p>
+                <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">
+                  Every submitted complaint already has an engineer, or no engineer is available
+                  in the responsible department.
                 </p>
-                <pre className="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 font-mono text-xs leading-relaxed text-slate-100 shadow-card">{`cost = travel_km
-     + 8   if engineer lacks the damage-class skill
-     + 3 × open_jobs        (workload balancing)
-     − 12 × severity/100    (urgency rebate)`}</pre>
               </div>
-              <div className="space-y-3.5">
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="flex items-center gap-1.5 font-semibold text-slate-800">
-                    <Info size={14} className="text-brand-600" /> Why compare on cost, not km?
-                  </p>
-                  <p className="mt-1.5 leading-relaxed text-slate-600">
-                    Cost is the objective being minimised — the optimiser will accept a longer
-                    drive to reach a skilled, less-loaded engineer. Benchmarked over 300 random
-                    batches, it was better or equal every time, never worse.
-                  </p>
+            </Card>
+          ) : (
+            <>
+              <Card className="mb-6 border-brand-200 bg-brand-50/40">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-700">Proposed dispatch</p>
+                    <p className="mt-1 text-3xl font-bold tracking-tight text-brand-800">
+                      {data.assignments.length} <span className="text-lg font-semibold">jobs</span>
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {data.totalDistanceKm} km total travel · {data.engineersConsidered} engineers considered
+                    </p>
+                  </div>
+                  <div>
+                    <button onClick={apply} disabled={applying}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:bg-slate-300">
+                      <Play size={15} /> {applying ? "Dispatching…" : "Apply this assignment"}
+                    </button>
+                    {applied !== null && (
+                      <p className="mt-2 text-right text-xs font-medium text-emerald-700">
+                        {applied} complaint{applied === 1 ? "" : "s"} dispatched.
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="font-semibold text-slate-800">Infeasible pairs</p>
-                  <p className="mt-1.5 leading-relaxed text-slate-600">
-                    Off-duty or cross-department pairings are priced at 10⁶ and excluded rather than forced.
-                  </p>
+                {error && <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+              </Card>
+
+              <Card className="mb-6" title="Optimal vs greedy">
+                <p className="mb-3 text-sm text-slate-500">
+                  Greedy sends each complaint to its nearest free engineer, worst first. It is
+                  locally sensible and globally worse: an early complaint takes the engineer a
+                  later, closer one needed. Both allocate {data.assignments.length} jobs here, so
+                  the difference is the algorithm alone.
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500">
+                        <th className="px-3 py-2">Strategy</th>
+                        <th className="px-3 py-2">Jobs</th>
+                        <th className="px-3 py-2">Total cost</th>
+                        <th className="px-3 py-2">Travel</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="bg-emerald-50/50">
+                        <td className="px-3 py-2 font-semibold text-slate-900">Hungarian (optimal)</td>
+                        <td className="px-3 py-2 text-slate-700">{data.assignments.length}</td>
+                        <td className="px-3 py-2 font-bold text-emerald-700">{data.totalCost}</td>
+                        <td className="px-3 py-2 text-slate-700">{data.totalDistanceKm} km</td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 text-slate-700">Greedy — nearest free engineer</td>
+                        <td className="px-3 py-2 text-slate-600">{data.naiveAssigned}</td>
+                        <td className="px-3 py-2 text-slate-600">{data.naiveTotalCost}</td>
+                        <td className="px-3 py-2 text-slate-600">{data.naiveTotalDistanceKm} km</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-            </div>
-          </Card>
+                <p className="mt-3 flex items-center gap-1.5 text-sm text-slate-700">
+                  <TrendingDown size={15} className="text-emerald-600" />
+                  {data.costImprovementPct > 0 ? (
+                    <>Hungarian is <strong>{data.costImprovementPct}%</strong> cheaper and saves{" "}
+                      <strong>{Math.round((data.naiveTotalDistanceKm - data.totalDistanceKm) * 10) / 10} km</strong> of driving.</>
+                  ) : (
+                    <>Greedy matches the optimal allocation on this queue — they agree when the
+                      cheapest choices happen not to compete.</>
+                  )}
+                </p>
+              </Card>
+
+              <Card className="mb-6" title={`Proposed assignments (${data.assignments.length})`}>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500">
+                        <th className="px-2.5 py-1.5">Ref</th>
+                        <th className="px-2.5 py-1.5">Damage</th>
+                        <th className="px-2.5 py-1.5">Priority</th>
+                        <th className="px-2.5 py-1.5">Engineer</th>
+                        <th className="px-2.5 py-1.5">Distance</th>
+                        <th className="px-2.5 py-1.5">Skill</th>
+                        <th className="px-2.5 py-1.5">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.assignments.map((a) => (
+                        <tr key={a.complaint.ref}>
+                          <td className="px-2.5 py-1.5">
+                            <Link to={`/app/complaints/${a.complaint.ref}`} className="font-medium text-brand-700 hover:underline">{a.complaint.ref}</Link>
+                          </td>
+                          <td className="px-2.5 py-1.5 text-slate-700">{a.complaint.category}</td>
+                          <td className="px-2.5 py-1.5"><PriorityBadge priority={a.complaint.priority} /></td>
+                          <td className="px-2.5 py-1.5">
+                            <span className="font-medium text-slate-800">{a.engineer.name}</span>
+                            <span className="ml-1.5 font-mono text-[10px] text-slate-400">{a.engineer.code}</span>
+                            <span className="ml-1.5 text-[10px] text-slate-500">{a.engineer.openJobs} open</span>
+                          </td>
+                          <td className="px-2.5 py-1.5 text-slate-700">{a.distanceKm} km</td>
+                          <td className="px-2.5 py-1.5">
+                            {a.skillMatch
+                              ? <span className="inline-flex items-center gap-0.5 text-emerald-700"><Check size={12} /> yes</span>
+                              : <span className="inline-flex items-center gap-0.5 text-amber-600"><X size={12} /> no</span>}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-slate-600">{a.cost}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {data.unassigned.length > 0 && (
+                <Card title={`Not dispatched this round (${data.unassigned.length})`}>
+                  <p className="mb-3 text-sm text-slate-500">
+                    Each engineer takes one job per round, so a queue longer than the roster
+                    carries over. Run the optimiser again once these are completed.
+                  </p>
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200">
+                    <table className="w-full text-xs">
+                      <tbody className="divide-y divide-slate-100">
+                        {data.unassigned.map((u) => (
+                          <tr key={u.ref}>
+                            <td className="px-2.5 py-1.5">
+                              <Link to={`/app/complaints/${u.ref}`} className="font-medium text-brand-700 hover:underline">{u.ref}</Link>
+                            </td>
+                            <td className="max-w-[320px] truncate px-2.5 py-1.5 text-slate-700">{u.title}</td>
+                            <td className="px-2.5 py-1.5 text-slate-500">{u.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
         </>
       )}
     </>

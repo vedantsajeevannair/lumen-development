@@ -18,6 +18,7 @@ import { AuthenticationService } from '../authentication/authentication.service'
 import { RefreshTokenDto } from '../authentication/dto/refresh-token.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { toPublicUser } from '../common/public-user';
 
 @Controller('api')
 export class WebIntegrationController {
@@ -54,7 +55,7 @@ export class WebIntegrationController {
   @UseGuards(JwtAuthGuard)
   @Get('auth/me')
   async getMe(@Req() req: any) {
-    return { user: req.user };
+    return { user: toPublicUser(req.user) };
   }
 
   @Get('health')

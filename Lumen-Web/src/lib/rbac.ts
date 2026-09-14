@@ -2,16 +2,15 @@ export const ROLE_LABELS: Record<string, string> = {
   ADMINISTRATOR: "Administrator",
   SUPERVISOR: "Supervisor",
   ENGINEER: "Field Engineer",
-  DEPARTMENT: "Department",
-  CITIZEN: "Citizen",
+  CITIZEN: "Resident",
 };
 
-/** Staff roles see the operator console; citizens see the self-service portal.
- *  Mirrors how the mobile app routes ADMIN/SUPER_ADMIN vs everyone else. */
-export const STAFF_ROLES = ["ADMINISTRATOR", "SUPERVISOR", "ENGINEER", "DEPARTMENT"];
-export const isStaff = (role?: string | null) => STAFF_ROLES.includes(role ?? "");
-export const isCitizen = (role?: string | null) => role === "CITIZEN";
-
+// STAFF_ROLES, not every role. ALL_ROLES used to be every key of ROLE_LABELS,
+// and most nav items were granted to it — so adding CITIZEN above would have
+// silently handed residents the budget planner, the engineer roster and the
+// audit log. Staff access is now listed explicitly and a new role starts with
+// nothing until it is named.
+export const STAFF_ROLES = ["ADMINISTRATOR", "SUPERVISOR", "ENGINEER"];
 export const ALL_ROLES = Object.keys(ROLE_LABELS);
 
 export type NavItem = {
@@ -23,23 +22,20 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  // --- citizen portal -------------------------------------------------------
-  { key: "c-dashboard", label: "Overview", href: "/app/me", icon: "LayoutDashboard", roles: ["CITIZEN"] },
-  { key: "c-report", label: "Report an Issue", href: "/app/me/report", icon: "PlusCircle", roles: ["CITIZEN"] },
-  { key: "c-reports", label: "My Reports", href: "/app/me/reports", icon: "ClipboardList", roles: ["CITIZEN"] },
-  { key: "c-analytics", label: "My Impact", href: "/app/me/analytics", icon: "BarChart3", roles: ["CITIZEN"] },
-  { key: "c-payments", label: "Municipal Bills", href: "/app/me/payments", icon: "Receipt", roles: ["CITIZEN"] },
-  { key: "c-identity", label: "Identity", href: "/app/me/identity", icon: "BadgeCheck", roles: ["CITIZEN"] },
-  { key: "c-profile", label: "Profile", href: "/app/me/profile", icon: "UserCircle", roles: ["CITIZEN"] },
+  // Residents get two entries and nothing else: report something, and follow
+  // what they reported.
+  { key: "report", label: "Report an Issue", href: "/app/complaints/new", icon: "Camera", roles: ["CITIZEN"] },
+  { key: "my-reports", label: "My Reports", href: "/app/complaints", icon: "ClipboardList", roles: ["CITIZEN"] },
 
-  // --- operator console -----------------------------------------------------
   { key: "dashboard", label: "Dashboard", href: "/app/dashboard", icon: "LayoutDashboard", roles: STAFF_ROLES },
+  { key: "assistant", label: "Assistant", href: "/app/assistant", icon: "Sparkles", roles: STAFF_ROLES },
   { key: "complaints", label: "Complaints", href: "/app/complaints", icon: "ClipboardList", roles: STAFF_ROLES },
-  { key: "assignment", label: "Assignment Optimiser", href: "/app/assignment", icon: "Route", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
   { key: "gis", label: "GIS Map", href: "/app/gis", icon: "Map", roles: STAFF_ROLES },
+  { key: "work-orders", label: "Work Orders", href: "/app/work-orders", icon: "Layers", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
+  { key: "estimate", label: "Material Estimate", href: "/app/estimate", icon: "Calculator", roles: STAFF_ROLES },
+  { key: "budget", label: "Budget Planner", href: "/app/budget", icon: "Wallet", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
+  { key: "assignment", label: "Assignment", href: "/app/assignment", icon: "HardHat", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
   { key: "engineers", label: "Engineers", href: "/app/engineers", icon: "HardHat", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
-  { key: "analytics", label: "Analytics", href: "/app/analytics", icon: "BarChart3", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
-  { key: "users", label: "Users", href: "/app/users", icon: "Users", roles: ["ADMINISTRATOR"] },
   { key: "audit-logs", label: "Audit Log", href: "/app/audit-logs", icon: "ScrollText", roles: ["ADMINISTRATOR", "SUPERVISOR"] },
 ];
 
@@ -52,7 +48,7 @@ export function canAccess(role: string, moduleKey: string): boolean {
   return item ? item.roles.includes(role) : false;
 }
 
-/** Complaint lifecycle. Closure is gated on AI verification (Feature 4). */
+/** Complaint lifecycle. */
 export type Transition = { to: string; label: string; roles: string[] };
 
 const MANAGERIAL = ["SUPERVISOR", "ADMINISTRATOR"];
@@ -81,9 +77,13 @@ export const STATUS_LABELS: Record<string, string> = {
   REJECTED: "Rejected",
 };
 
+// The three classes the platform actually detects. Alligator Crack and
+// Overflowing Bin were trained and measured (P 0.639/R 0.225 and P 0.500/
+// R 0.444 on held-out data) and dropped as not fit to show a supervisor;
+// they are suppressed in the detector and are not offered anywhere here.
 export const DAMAGE_CLASSES = [
   "Pothole",
-  "Alligator Crack",
-  "Transverse Crack",
-  "Longitudinal Crack",
+  "Garbage Pile",
+  "Open Manhole",
+  "Closed Manhole",
 ];

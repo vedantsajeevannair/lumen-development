@@ -17,6 +17,7 @@ import { StorageService } from '../common/storage/storage.service';
 import { AiService } from '../ai/ai.service';
 import { findNearbyDuplicates } from '../common/geo/duplicate-check';
 import { nextTrackingId } from '../common/tracking-id';
+import { toConsoleShape } from '../common/console-shape';
 
 export type AssignComplaint = {
   id: string;
@@ -671,7 +672,7 @@ export class WebIntegrationService implements OnModuleInit {
     // different scales.
     return {
       complaints: dbComplaints.map((c) => ({
-        ...c,
+        ...toConsoleShape(c as any),
         ...complaintDerivations(c),
       })),
     };
@@ -690,6 +691,7 @@ export class WebIntegrationService implements OnModuleInit {
       include: {
         aiPrediction: true,
         dispatchRecords: true,
+        potholes: { orderBy: { recordedAt: 'asc' } },
         reporter: { select: { fullName: true, email: true } },
         timeline: {
           orderBy: { createdAt: 'asc' },
@@ -762,7 +764,15 @@ export class WebIntegrationService implements OnModuleInit {
       }
     }
 
-    return dbComplaint;
+
+    // Same compatibility fields as the list endpoint, so a page can navigate
+    // from one to the other without the field names changing underneath it.
+    //
+    // Returned both at the top level and under `complaint`: the console reads
+    // data.complaint, while every existing caller reads the fields directly.
+    // Duplicating one object is cheaper than breaking either.
+    const shaped = toConsoleShape(dbComplaint as any);
+    return { ...shaped, complaint: shaped };
   }
 
   async createComplaint(

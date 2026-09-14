@@ -18,6 +18,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 // @ts-ignore - IDE TS Server caching issue
 import { ResetPasswordDto, ForgotPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { toPublicUser } from '../common/public-user';
 
 @Controller('auth')
 export class AuthenticationController {
@@ -83,7 +84,7 @@ export class AuthenticationController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async getMe(@Req() req: any) {
-    return { user: req.user };
+    return { user: toPublicUser(req.user) };
   }
 
   @UseGuards(JwtAuthGuard)
