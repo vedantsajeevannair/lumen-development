@@ -28,6 +28,12 @@ export function Dashboard() {
 
   const open = complaints.filter((c) => OPEN.includes(c.status));
   const dups = complaints.filter((c) => c.duplicateOfId !== null);
+  // Averaged over complaints the detector has actually scored, not over every
+  // complaint. Including the unscored ones would divide by a denominator that
+  // has nothing to do with severity and quietly report a low mean for a bad
+  // backlog. The denominator is surfaced on the card instead, because "31.0"
+  // over seven complaints when six were never analysed is a true number that
+  // reads as a false one.
   const scored = complaints.filter((c) => (c.severityScore ?? 0) > 0);
   const avgSeverity = scored.length ? scored.reduce((s, c) => s + (c.severityScore ?? 0), 0) / scored.length : 0;
 
@@ -39,7 +45,17 @@ export function Dashboard() {
     value, color: categoryHex(k),
   }));
 
-  const byClass = Object.entries(complaints.reduce<Record<string, number>>((a, c) => { a[c.category] = (a[c.category] ?? 0) + 1; return a; }, {}))
+  // Case-folded before counting. Complaint.category holds both "Pothole" and
+  // "POTHOLE" for the same class — intake stores the label the client sent and
+  // the vision service later overwrites it with its own — so keying the tally
+  // on the raw string reported one class as two bars, splitting its count.
+  // The first spelling seen wins as the label, which keeps the detector's
+  // casing for anything it has analysed.
+  const byClass = Object.entries(complaints.reduce<Record<string, number>>((a, c) => {
+    const key = Object.keys(a).find((k) => k.toLowerCase() === c.category.toLowerCase()) ?? c.category;
+    a[key] = (a[key] ?? 0) + 1;
+    return a;
+  }, {}))
     .sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
 
   const bandColors: Record<string, string> = { SEVERE: "#ef4444", SIGNIFICANT: "#f59e0b", MODERATE: "#0ea5e9", MINOR: "#94a3b8", NONE: "#cbd5e1" };
@@ -62,7 +78,17 @@ export function Dashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Open Complaints" value={open.length} sub={`${complaints.length} total`} icon={ClipboardList} tone="brand" />
-        <KpiCard label="Mean Severity" value={avgSeverity.toFixed(1)} sub="CV-derived, 0–100" icon={ScanSearch} tone={avgSeverity >= 50 ? "red" : "amber"} />
+        <KpiCard
+          label="Mean Severity"
+          value={scored.length ? avgSeverity.toFixed(1) : "—"}
+          sub={
+            scored.length
+              ? `across ${scored.length} scored of ${complaints.length}`
+              : "nothing scored yet"
+          }
+          icon={ScanSearch}
+          tone={avgSeverity >= 50 ? "red" : "amber"}
+        />
         <KpiCard label="Duplicates Caught" value={dups.length} sub="image + geo matched" icon={Copy} tone="amber" />
       </div>
 
