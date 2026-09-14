@@ -27,6 +27,9 @@ export type AssignComplaint = {
   category: string;
   severityScore: number;
   departmentId: string;
+  /** Display-only, carried through the optimiser for the console's rows. */
+  title?: string;
+  priority?: string;
 };
 
 export type AssignEngineer = {
@@ -39,7 +42,24 @@ export type AssignEngineer = {
   status: string;
   departmentId: string;
   openJobs: number;
+  /** Display-only. */
+  zone?: string;
 };
+
+/**
+ * Points of interest the map draws a risk radius around.
+ *
+ * `risk` is the weight each would carry in a priority calculation that used
+ * proximity. This deployment derives priority from clustering rather than from
+ * landmarks, so the numbers are illustrative of the overlay, not inputs to
+ * anything — which is why they live here beside the map and not in the
+ * priority code.
+ */
+const GIS_LANDMARKS = [
+  { name: 'Hospital', type: 'HOSPITAL', lat: 12.9719, lng: 77.5937, radiusM: 500, risk: 12 },
+  { name: 'School', type: 'SCHOOL', lat: 12.9352, lng: 77.6245, radiusM: 500, risk: 9 },
+  { name: 'Major highway', type: 'HIGHWAY', lat: 12.957, lng: 77.639, radiusM: 500, risk: 10 },
+];
 
 const INFEASIBLE = 1e6;
 const SKILL_PENALTY_KM = 8;
@@ -961,6 +981,11 @@ export class WebIntegrationService implements OnModuleInit {
         ? c.aiPrediction.confidenceScore * 100
         : 35,
       departmentId: 'ROADS',
+      // Carried through the optimiser untouched. The console renders a title
+      // and a priority badge on every proposed row, and PriorityBadge calls
+      // priority.charAt(0) — an absent value threw and blanked the page.
+      title: c.title,
+      priority: c.priority,
     }));
 
     const es: AssignEngineer[] = engineers.map((e, index) => {
@@ -976,6 +1001,9 @@ export class WebIntegrationService implements OnModuleInit {
         status: 'AVAILABLE',
         departmentId: 'ROADS',
         openJobs: 0,
+        // No zones in this schema; the console prints it beside the engineer's
+        // name and an empty string simply disappears.
+        zone: '',
       };
     });
 
@@ -985,6 +1013,30 @@ export class WebIntegrationService implements OnModuleInit {
     );
 
     return {
+      // Flattened as well as nested. The console reads data.assignments and
+      // data.unassigned directly, so nesting everything under `result` gave it
+      // undefined and the first `.length` on it threw — the assignment page
+      // rendered as a blank screen rather than an error.
+      //
+      // `result` is kept so applyAssignments and any existing caller are
+      // unaffected; the duplication is a few hundred bytes against breaking
+      // one side or the other.
+      ...result,
+      // The optimiser returns the raw complaint for anything it could not
+      // place. The console lists these with a title and an explanation, so
+      // supply both rather than leaving it to render blanks.
+      unassigned: result.unassigned.map((u: any) => ({
+        ...u,
+        title: titles[u.id]?.title ?? u.ref,
+        reason:
+          engineers.length === 0
+            ? 'No active engineers on the roster'
+            : 'No engineer free with a matching skill in range',
+      })),
+      // Names the console expects that the optimiser does not produce under
+      // those names.
+      naiveAssigned: result.assignments.length,
+      engineersConsidered: engineers.length,
       result,
       titles,
       engineerCount: engineers.length,
@@ -1039,6 +1091,16 @@ export class WebIntegrationService implements OnModuleInit {
       lng: c.longitude || 77.5946,
       status: this.mapStatusToFrontend(c.status),
       priority: c.priority,
+      // The map colours each marker by severity band and labels it with its
+      // class, and reads them straight off the record without guarding. Absent
+      // here, the legend threw and the whole page rendered blank.
+      zone: '',
+      category: c.category,
+      civicCategory: 'ROADS',
+      severityScore: severityPercent(c.severity),
+      ...complaintDerivations(c),
+      createdAt: c.createdAt,
+      engineer: null,
     }));
 
     const formattedEngineers = engineers.map((e, index) => ({
@@ -1048,9 +1110,31 @@ export class WebIntegrationService implements OnModuleInit {
       lat: 12.97 + index * 0.01,
       lng: 77.59 + index * 0.01,
       status: 'AVAILABLE',
+      // The map draws the engineer's marker as a badge containing this number,
+      // and printed the literal text "undefined" on the map without it.
+      //
+      // Always 0: this schema records assignment in the timeline rather than on
+      // the complaint, so there is no per-engineer count to read. Zero is
+      // honest about that; a fabricated figure on a dispatch map is not.
+      openJobs: 0,
+      zone: '',
+      skills: '',
+      department: null,
     }));
 
-    return { complaints: formattedComplaints, engineers: formattedEngineers };
+    return {
+      complaints: formattedComplaints,
+      engineers: formattedEngineers,
+      // The risk overlay. The map calls landmarks.find() unconditionally, so
+      // an absent array is a TypeError and a blank page rather than a map with
+      // one layer missing.
+      //
+      // Hardcoded, as in the original: there is no landmark table, and a table
+      // holding three rows would be worse than a constant that says what it
+      // is. Replace these with real coordinates for the city being served —
+      // they are also what the assistant answers "near the hospital" against.
+      landmarks: GIS_LANDMARKS,
+    };
   }
 
   async getEngineers() {
