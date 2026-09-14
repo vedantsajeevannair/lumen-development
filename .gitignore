@@ -40,6 +40,11 @@ node_modules/
 *.jpeg
 *.jpg
 *.png
+# …except the mail logo. mail.service.ts attaches it by path on every OTP and
+# verification email, so a clone without it throws ENOENT and registration
+# returns a 500. It is a build asset, not a screenshot — nest-cli.json already
+# copies **/*.png into dist/server for exactly this file.
+!Lumen-backend/server/mail/lumen_logo.png
 *.tiff
 
 # macOS

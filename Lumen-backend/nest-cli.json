@@ -7,7 +7,7 @@
     "assets": [
       {
         "include": "**/*.png",
-        "outDir": "dist/server",
+        "outDir": "dist",
         "watchAssets": true
       }
     ]

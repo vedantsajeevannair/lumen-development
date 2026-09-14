@@ -118,7 +118,16 @@ export class MailService {
 
       this.logger.log(`OTP Email sent to ${to}.`);
     } catch (error) {
-      this.logger.error(`Failed to send OTP email to ${to}`, error);
+      // Nest's Logger.error takes a *stack string* as its second argument, so
+      // passing the error object discarded the reason entirely and every SMTP
+      // failure logged as an unexplained "Failed to send OTP email". Put the
+      // message in the line and the stack where it belongs.
+      const err = error as NodeJS.ErrnoException;
+      this.logger.error(
+        `Failed to send OTP email to ${to}: ${err?.message ?? err}` +
+          (err?.code ? ` (code ${err.code})` : ''),
+        err?.stack,
+      );
       throw error;
     }
   }

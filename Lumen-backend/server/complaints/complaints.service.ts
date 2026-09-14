@@ -15,6 +15,7 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { AiService } from '../ai/ai.service';
 import { StorageService } from '../common/storage/storage.service';
 import { findNearbyDuplicates } from '../common/geo/duplicate-check';
+import { nextTrackingId } from '../common/tracking-id';
 
 @Injectable()
 export class ComplaintsService {
@@ -27,29 +28,9 @@ export class ComplaintsService {
     private storageService: StorageService,
   ) {}
 
-  private async getNextTrackingId(
-    tx?: Prisma.TransactionClient,
-  ): Promise<string> {
-    const prisma = tx ?? this.prisma;
-    try {
-      // Create sequence if it doesn't exist, starting from 10500 to guarantee no conflicts
-      await prisma.$executeRawUnsafe(
-        `CREATE SEQUENCE IF NOT EXISTS complaint_tracking_seq START 10500`,
-      );
-
-      const result = await prisma.$queryRawUnsafe<{ seq: bigint }[]>(
-        `SELECT nextval('complaint_tracking_seq') AS seq`,
-      );
-      const nextNumber = Number(result[0].seq);
-      return `CMP-${nextNumber}`;
-    } catch (error) {
-      this.logger.error(
-        'Failed to get sequence from database, falling back to count',
-        error,
-      );
-      const count = await prisma.complaint.count();
-      return `CMP-${10500 + count}`;
-    }
+  /** Delegates to the shared allocator so both intake paths cannot drift. */
+  private getNextTrackingId(tx?: Prisma.TransactionClient): Promise<string> {
+    return nextTrackingId(tx ?? this.prisma);
   }
 
   async create(createComplaintDto: CreateComplaintDto, user: User) {
@@ -191,11 +172,12 @@ export class ComplaintsService {
     const results: Complaint[] = [];
     // Using a transaction to ensure atomic batch sync
     await this.prisma.$transaction(async (tx) => {
-      const startingRef = await this.getNextTrackingId(tx);
-      let nextNumber = parseInt(startingRef.split('-')[1], 10);
-
       for (const dto of syncDto.complaints) {
-        const trackingId = `CMP-${nextNumber++}`;
+        // One allocation per complaint. Taking a single number and counting up
+        // from it locally reintroduces the collision the sequence exists to
+        // prevent: a second sync running concurrently would start from the
+        // same base and hand out references this loop has already used.
+        const trackingId = await this.getNextTrackingId(tx);
         const complaint = await tx.complaint.create({
           data: {
             trackingId,

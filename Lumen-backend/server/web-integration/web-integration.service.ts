@@ -16,6 +16,7 @@ import { randomBytes } from 'crypto';
 import { StorageService } from '../common/storage/storage.service';
 import { AiService } from '../ai/ai.service';
 import { findNearbyDuplicates } from '../common/geo/duplicate-check';
+import { nextTrackingId } from '../common/tracking-id';
 
 export type AssignComplaint = {
   id: string;
@@ -822,10 +823,7 @@ export class WebIntegrationService implements OnModuleInit {
       throw new BadRequestException('A photograph is required.');
     }
 
-    const lastComplaint = await this.prisma.complaint.findFirst({
-      orderBy: { createdAt: 'desc' },
-    });
-    const nextRef = `CMP-${lastComplaint ? parseInt(lastComplaint.trackingId.split('-')[1]) + 1 : 10245}`;
+    const nextRef = await nextTrackingId(this.prisma);
 
     const complaint = await this.prisma.complaint.create({
       data: {
