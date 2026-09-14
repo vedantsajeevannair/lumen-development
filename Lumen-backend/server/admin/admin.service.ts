@@ -9,6 +9,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GamificationService } from '../gamification/gamification.service';
+import * as bcrypt from 'bcrypt';
+import { toPublicUser } from '../common/public-user';
 
 @Injectable()
 export class AdminService {
@@ -64,7 +66,11 @@ export class AdminService {
     ]);
 
     return {
-      data: users,
+      // Projected, not raw. This returned the full Prisma row for every user —
+      // bcrypt hash, biometricHash and verificationDocs included — to anyone
+      // who could reach the admin API. One compromised admin session handed
+      // over the entire credential table.
+      data: users.map(toPublicUser),
       meta: {
         total,
         page,
@@ -83,17 +89,27 @@ export class AdminService {
       throw new ConflictException('Email already in use');
     }
 
+    if (!createUserDto.password) {
+      throw new ConflictException('A password is required.');
+    }
+    // Hashed, at the same cost factor the authentication service uses. This
+    // stored the password verbatim — the comment said "In real app, hash
+    // this!" — so every account an administrator created had its password
+    // sitting in the database as plaintext, and login could never match it
+    // against a bcrypt comparison anyway.
+    const hashedPassword: string = await bcrypt.hash(createUserDto.password, 10);
+
     const user = await this.prisma.user.create({
       data: {
         email: createUserDto.email,
-        password: createUserDto.password, // In real app, hash this!
+        password: hashedPassword,
         fullName: createUserDto.fullName,
         role: createUserDto.role,
       },
     });
 
     await this.logAudit(adminId, 'CREATE_USER', 'User', user.id);
-    return user;
+    return toPublicUser(user);
   }
 
   async updateUser(adminId: string, id: string, updateUserDto: UpdateUserDto) {
@@ -112,7 +128,7 @@ export class AdminService {
     });
 
     await this.logAudit(adminId, 'UPDATE_USER', 'User', id, updateUserDto);
-    return updated;
+    return toPublicUser(updated);
   }
 
   async softDeleteUser(adminId: string, id: string) {
