@@ -70,6 +70,32 @@ export class FieldOpsController {
     return this.fieldOps.reopen(ref, body?.reason ?? '', user);
   }
 
+  @Get('clusters')
+  @ApiOperation({ summary: 'Open complaints grouped into work orders' })
+  async clusters() {
+    return this.fieldOps.clusters();
+  }
+
+  @Get('estimate')
+  @ApiOperation({
+    summary: 'Bill of quantities across every measured complaint in the backlog',
+  })
+  async backlogEstimate(@Query('wastage') wastage?: string) {
+    return this.fieldOps.backlogEstimate(wastage);
+  }
+
+  @Get('plan')
+  @ApiOperation({
+    summary: 'Which repairs fit a budget, and the route each crew should drive',
+  })
+  async budgetPlan(
+    @Query('budget') budget?: string,
+    @Query('crews') crews?: string,
+    @Query('horizon') horizon?: string,
+  ) {
+    return this.fieldOps.budgetPlan(budget, crews, horizon);
+  }
+
   @Get('notifications')
   @ApiOperation({ summary: "The signed-in user's in-app notifications" })
   async notifications(@CurrentUser() user: any) {

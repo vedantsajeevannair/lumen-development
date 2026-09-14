@@ -19,13 +19,31 @@ export type SessionUser = {
  * component to render a set of initials crashes the tree — which showed up as
  * a blank page immediately after a successful login.
  */
+/**
+ * Role names differ between the API and this console's RBAC tables.
+ *
+ * Every permission check here — STAFF_ROLES, the nav map, the transition table
+ * — is keyed on ADMINISTRATOR. The API issues ADMIN and SUPER_ADMIN. An admin
+ * therefore failed every staff check and was bounced from the budget planner,
+ * the engineer roster and the audit log back to the complaint queue, which
+ * looked like those pages simply did not work.
+ *
+ * Mapped here rather than by editing the RBAC tables, so there is one place
+ * where the two vocabularies meet.
+ */
+const ROLE_ALIASES: Record<string, string> = {
+  ADMIN: 'ADMINISTRATOR',
+  SUPER_ADMIN: 'ADMINISTRATOR',
+  DEPARTMENT: 'SUPERVISOR',
+};
+
 function toSessionUser(raw: any): SessionUser | null {
   if (!raw) return null;
   return {
     sub: raw.sub ?? raw.id,
     email: raw.email,
     name: raw.name ?? raw.fullName ?? raw.email,
-    role: raw.role,
+    role: ROLE_ALIASES[raw.role] ?? raw.role,
     departmentId: raw.departmentId ?? null,
   };
 }

@@ -18,6 +18,9 @@ import {
   suggestDimensions,
 } from '../common/estimating/dimensions';
 import { toDetections } from '../common/estimating/detections';
+import { buildClusters, RADIUS_M, type Clusterable } from './clusters';
+import { buildItems, plan } from './planner';
+import { severityPercent, SLA_HOURS } from '../common/derivations';
 
 /**
  * Site measurement, material estimation, reopening and notifications.
@@ -33,6 +36,28 @@ import { toDetections } from '../common/estimating/detections';
  *  - There is no PENDING_REVIEW status. A finished repair is RESOLVED or
  *    CLOSED, so reopening accepts either.
  */
+/** Not RESOLVED, CLOSED or REJECTED. */
+const OPEN_STATUSES: ComplaintStatus[] = [
+  ComplaintStatus.PENDING,
+  ComplaintStatus.ASSIGNED,
+  ComplaintStatus.IN_PROGRESS,
+];
+
+/**
+ * A 0-100 priority score, from the band.
+ *
+ * The clustering and planning code both rank on a numeric score, which that
+ * schema stored per complaint and recomputed on read. Here priority is only
+ * ever a band, so the score is the midpoint of each band's range — enough to
+ * order work correctly without inventing precision the data does not carry.
+ */
+const PRIORITY_SCORE: Record<string, number> = {
+  CRITICAL: 85,
+  HIGH: 65,
+  MEDIUM: 40,
+  LOW: 15,
+};
+
 @Injectable()
 export class FieldOpsService {
   private readonly logger = new Logger(FieldOpsService.name);
@@ -356,5 +381,204 @@ export class FieldOpsService {
       data: { readAt: new Date() },
     });
     return { ok: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Work orders — clustering
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Open complaints grouped into single work orders.
+   *
+   * The clustering itself is lumen-platform's, unmodified. What changes is the
+   * shape fed to it: that schema carried `ref`, `civicCategory`, `zone`,
+   * `address`, `severityScore` on 0-100 and a stored `priorityScore`, none of
+   * which exist here in that form. Severity is rescaled from 0-5, priority is
+   * derived from the band, and zone and address are empty strings rather than
+   * invented values.
+   */
+  async clusters() {
+    const open = await this.prisma.complaint.findMany({
+      where: { status: { in: OPEN_STATUSES } },
+      select: {
+        id: true,
+        trackingId: true,
+        title: true,
+        latitude: true,
+        longitude: true,
+        category: true,
+        status: true,
+        severity: true,
+        priority: true,
+        createdAt: true,
+      },
+    });
+
+    const items: Clusterable[] = open
+      // Clustering is geometric; a complaint with no fix cannot be placed and
+      // would otherwise land at (0, 0) and group with everything else there.
+      .filter((c) => c.latitude != null && c.longitude != null)
+      .map((c) => ({
+        id: c.id,
+        ref: c.trackingId,
+        title: c.title,
+        lat: c.latitude!,
+        lng: c.longitude!,
+        category: c.category,
+        civicCategory: 'ROADS',
+        status: c.status,
+        severityScore: severityPercent(c.severity),
+        priorityScore: PRIORITY_SCORE[c.priority] ?? 40,
+        slaHours: SLA_HOURS[c.priority] ?? SLA_HOURS.MEDIUM,
+        createdAt: c.createdAt,
+        zone: '',
+        address: '',
+      }));
+
+    const clusters = buildClusters(items);
+    return {
+      radiusM: RADIUS_M,
+      clusters,
+      summary: {
+        openComplaints: open.length,
+        clusters: clusters.length,
+        complaintsInClusters: clusters.reduce((n, c) => n + c.members.length, 0),
+        // The headline: dispatches avoided by sending one crew per cluster
+        // rather than one per complaint.
+        visitsSaved: clusters.reduce((n, c) => n + c.visitsSaved, 0),
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Estimate across the whole measured backlog
+  // ---------------------------------------------------------------------------
+
+  async backlogEstimate(wastageRaw: unknown) {
+    const w = Number(wastageRaw ?? 5);
+    const wastage = Number.isFinite(w) ? Math.min(50, Math.max(0, w)) : 5;
+
+    const measured = await this.prisma.complaint.findMany({
+      where: { status: { in: OPEN_STATUSES }, potholes: { some: {} } },
+      select: {
+        trackingId: true,
+        title: true,
+        roadType: true,
+        priority: true,
+        potholes: { select: { volumeM3: true, perimeterM: true, source: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const groups: Record<RoadType, { refs: typeof measured; volume: number; count: number }> = {
+      BITUMINOUS: { refs: [], volume: 0, count: 0 },
+      CONCRETE: { refs: [], volume: 0, count: 0 },
+    };
+    for (const c of measured) {
+      // Unset road type falls to bituminous — the commoner surface, and the
+      // estimate is flagged provisional either way.
+      const key: RoadType = c.roadType === 'CONCRETE' ? 'CONCRETE' : 'BITUMINOUS';
+      groups[key].refs.push(c);
+      groups[key].volume += c.potholes.reduce((t, p) => t + p.volumeM3, 0);
+      groups[key].count += c.potholes.length;
+    }
+
+    return {
+      wastagePct: wastage,
+      complaintsMeasured: measured.length,
+      groups: (Object.keys(groups) as RoadType[])
+        .filter((k) => groups[k].count > 0)
+        .map((k) => ({
+          roadType: k,
+          complaints: groups[k].refs.map((c) => ({
+            ref: c.trackingId,
+            title: c.title,
+            zone: '',
+            priority: c.priority,
+            potholeCount: c.potholes.length,
+            volumeM3: Number(
+              c.potholes.reduce((t, p) => t + p.volumeM3, 0).toFixed(3),
+            ),
+            estimated: c.potholes.every((p) => p.source === 'ESTIMATED'),
+          })),
+          estimate: estimateMaterials(groups[k].volume, groups[k].count, k, wastage),
+        })),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Budget planning
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Which repairs fit the budget, and in what order the crews should drive.
+   *
+   * Selection is a 0/1 knapsack maximising risk removed, reported against
+   * greedy baselines because the point of the feature is that greedy is not
+   * optimal. Routing is Clarke-Wright savings then 2-opt, per crew.
+   *
+   * Cost comes from the measured bill of quantities where one exists and falls
+   * back to the rate card elsewhere. Mixing the two is deliberate: a plan that
+   * ignored real measurements because some complaints lack them would be
+   * worse, not purer.
+   */
+  async budgetPlan(budgetRaw: unknown, crewsRaw: unknown, horizonRaw: unknown) {
+    const budget = Math.max(0, Number(budgetRaw ?? 500_000));
+    const crews = Math.min(10, Math.max(1, Number(crewsRaw ?? 3)));
+    const horizonDays = Math.min(30, Math.max(1, Number(horizonRaw ?? 7)));
+
+    const complaints = await this.prisma.complaint.findMany({
+      where: { status: { in: OPEN_STATUSES }, latitude: { not: null }, longitude: { not: null } },
+      select: {
+        id: true,
+        trackingId: true,
+        title: true,
+        category: true,
+        latitude: true,
+        longitude: true,
+        severity: true,
+        priority: true,
+        roadType: true,
+        potholes: { select: { volumeM3: true, source: true } },
+      },
+    });
+
+    const shaped = complaints.map((c) => ({
+      id: c.id,
+      ref: c.trackingId,
+      title: c.title,
+      category: c.category,
+      civicCategory: 'ROADS',
+      lat: c.latitude!,
+      lng: c.longitude!,
+      severityScore: severityPercent(c.severity),
+      priorityScore: PRIORITY_SCORE[c.priority] ?? 40,
+      priority: c.priority,
+      slaHours: SLA_HOURS[c.priority] ?? SLA_HOURS.MEDIUM,
+      roadType: c.roadType,
+      potholes: c.potholes,
+    }));
+
+    const items = buildItems(shaped as any);
+
+    // Replace the assumed cost with the real one wherever the site has been
+    // measured. Same order as `shaped`, so index alignment holds.
+    for (const [i, c] of shaped.entries()) {
+      if (c.potholes.length === 0) continue;
+      const volume = c.potholes.reduce((t, p) => t + p.volumeM3, 0);
+      const rt: RoadType = c.roadType === 'CONCRETE' ? 'CONCRETE' : 'BITUMINOUS';
+      items[i].cost = Math.round(
+        estimateMaterials(volume, c.potholes.length, rt, 5).cost.totalInr,
+      );
+      // A cost derived from photo-estimated geometry is still an estimate, so
+      // only geometry someone actually measured earns the "measured" label.
+      items[i].costMeasured = c.potholes.some((p) => p.source === 'MEASURED');
+    }
+
+    // Stands in for the works depot the crews start from.
+    const depot = { lat: 12.9716, lng: 77.5946 };
+    const result = plan(items, { budget, crews, horizonDays, depot });
+
+    return { ...result, measuredCount: items.filter((i) => i.costMeasured).length };
   }
 }

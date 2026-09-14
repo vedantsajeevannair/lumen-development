@@ -10,9 +10,13 @@ import {
   HttpCode,
   HttpStatus,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  AnyFilesInterceptor,
+  FileInterceptor,
+} from '@nestjs/platform-express';
 import { WebIntegrationService } from './web-integration.service';
 import { AuthenticationService } from '../authentication/authentication.service';
 import { RefreshTokenDto } from '../authentication/dto/refresh-token.dto';
@@ -82,15 +86,25 @@ export class WebIntegrationController {
   // report, not an optional extra. Without FileInterceptor the body arrives
   // unparsed, every field reads as undefined, and Prisma rejects the missing
   // title as a bare 500 that says nothing about the real cause.
+  //
+  // AnyFilesInterceptor rather than FileInterceptor('photo'): the console posts
+  // under "photos" because it supports several angles of the same defect, while
+  // the mobile app posts a single "photo". Binding to one field name means
+  // whichever client did not choose it silently uploads nothing and the report
+  // is rejected for having no photograph.
+  //
+  // Only the first file is stored — this schema holds one imageUrl per
+  // complaint. The extra angles are accepted and dropped rather than refused,
+  // because losing the secondary views is better than losing the report.
   @UseGuards(JwtAuthGuard)
   @Post('complaints')
-  @UseInterceptors(FileInterceptor('photo'))
+  @UseInterceptors(AnyFilesInterceptor())
   async createComplaint(
     @Body() body: any,
-    @UploadedFile() photo: Express.Multer.File | undefined,
+    @UploadedFiles() files: Express.Multer.File[] | undefined,
     @CurrentUser() user: any,
   ) {
-    return this.integrationService.createComplaint(body, user.id, photo);
+    return this.integrationService.createComplaint(body, user.id, files?.[0]);
   }
 
   @UseGuards(JwtAuthGuard)
