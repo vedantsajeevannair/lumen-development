@@ -25,7 +25,7 @@ type Img = { id: string; kind: string; path: string; annotated: string | null; s
 type Ev = { id: string; type: string; message: string; actor: string; createdAt: string };
 type Complaint = {
   id: string; ref: string; title: string; description: string; category: string; zone: string; address: string;
-  lat: number; lng: number; status: string; priority: string; slaHours: number; createdAt: string;
+  lat: number | null; lng: number | null; status: string; priority: string; slaHours: number; createdAt: string;
   civicCategory: string | null; autoRouted: boolean;
   aiModelMode: string | null; aiConfidence: number | null; detections: string | null;
   severityScore: number | null; severityBand: string | null;
@@ -359,7 +359,14 @@ export function ComplaintDetail() {
 
           <Card title="Location & Assignment">
             <div className="space-y-3 text-sm">
-              <p className="flex items-start gap-2 text-slate-700"><MapPin size={15} className="mt-0.5 text-slate-400" /><span>{c.address}<span className="block text-xs text-slate-500">{c.zone} · {c.lat.toFixed(4)}, {c.lng.toFixed(4)}</span></span></p>
+              <p className="flex items-start gap-2 text-slate-700"><MapPin size={15} className="mt-0.5 text-slate-400" /><span>{c.address}<span className="block text-xs text-slate-500">
+                  {/* Coordinates are optional now — a report filed without a fix
+                      stores null rather than a placeholder, so this has to say
+                      so instead of formatting a number that is not there. */}
+                  {[c.zone, c.lat != null && c.lng != null
+                    ? `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`
+                    : "location not recorded"].filter(Boolean).join(" · ")}
+                </span></span></p>
               <div className="border-t border-slate-100 pt-3">
                 <div className="text-xs uppercase tracking-wide text-slate-400">Assigned engineer</div>
                 <div className="font-medium text-slate-800">{c.engineer?.name ?? "Unassigned"}</div>
