@@ -5,10 +5,11 @@ import { WebIntegrationService } from './web-integration.service';
 import { AuthenticationModule } from '../authentication/authentication.module';
 import { StorageModule } from '../common/storage/storage.module';
 import { AiModule } from '../ai/ai.module';
+import { PriorityService } from '../common/priority/priority.service';
 
 @Module({
   imports: [HttpModule, AuthenticationModule, StorageModule, AiModule],
   controllers: [WebIntegrationController],
-  providers: [WebIntegrationService],
+  providers: [PriorityService, WebIntegrationService],
 })
 export class WebIntegrationModule {}

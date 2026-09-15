@@ -18,6 +18,8 @@ import { AiService } from '../ai/ai.service';
 import { findNearbyDuplicates } from '../common/geo/duplicate-check';
 import { nextTrackingId } from '../common/tracking-id';
 import { toConsoleShape } from '../common/console-shape';
+import { PriorityService } from '../common/priority/priority.service';
+import { LANDMARKS } from '../common/priority/landmarks';
 
 export type AssignComplaint = {
   id: string;
@@ -45,21 +47,6 @@ export type AssignEngineer = {
   /** Display-only. */
   zone?: string;
 };
-
-/**
- * Points of interest the map draws a risk radius around.
- *
- * `risk` is the weight each would carry in a priority calculation that used
- * proximity. This deployment derives priority from clustering rather than from
- * landmarks, so the numbers are illustrative of the overlay, not inputs to
- * anything — which is why they live here beside the map and not in the
- * priority code.
- */
-const GIS_LANDMARKS = [
-  { name: 'Hospital', type: 'HOSPITAL', lat: 12.9719, lng: 77.5937, radiusM: 500, risk: 12 },
-  { name: 'School', type: 'SCHOOL', lat: 12.9352, lng: 77.6245, radiusM: 500, risk: 9 },
-  { name: 'Major highway', type: 'HIGHWAY', lat: 12.957, lng: 77.639, radiusM: 500, risk: 10 },
-];
 
 const INFEASIBLE = 1e6;
 const SKILL_PENALTY_KM = 8;
@@ -316,6 +303,7 @@ export class WebIntegrationService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly storageService: StorageService,
     private readonly aiService: AiService,
+    private readonly priorityService: PriorityService,
   ) {}
 
   async onModuleInit() {
@@ -690,11 +678,22 @@ export class WebIntegrationService implements OnModuleInit {
     // renders them. Previously the list returned raw 0-5 severity with no band,
     // while the detail endpoint returned a 0-100 score — the same field on two
     // different scales.
+    // Priority is scored here rather than read off the row. It depends on age,
+    // so a stored value is stale the moment it is written — and the stored one
+    // came from a rule that let clustering outrank everything else.
+    const population = await this.priorityService.population();
+
     return {
-      complaints: dbComplaints.map((c) => ({
-        ...toConsoleShape(c as any),
-        ...complaintDerivations(c),
-      })),
+      complaints: dbComplaints.map((c) => {
+        const p = this.priorityService.score(c as any, population);
+        return {
+          ...toConsoleShape(c as any),
+          ...complaintDerivations({ ...c, priority: p.priority }),
+          priority: p.priority,
+          priorityScore: p.score,
+          priorityFactors: JSON.stringify(p.factors),
+        };
+      }),
     };
   }
   private getComplaintWhere(ref: string) {
@@ -791,7 +790,20 @@ export class WebIntegrationService implements OnModuleInit {
     // Returned both at the top level and under `complaint`: the console reads
     // data.complaint, while every existing caller reads the fields directly.
     // Duplicating one object is cheaper than breaking either.
-    const shaped = toConsoleShape(dbComplaint as any);
+    // Scored the same way the queue is, so a complaint does not change
+    // priority as you click into it.
+    const population = await this.priorityService.population();
+    const p = this.priorityService.score(dbComplaint as any, population);
+
+    const shaped = {
+      ...toConsoleShape(dbComplaint as any),
+      ...complaintDerivations({ ...dbComplaint, priority: p.priority }),
+      priority: p.priority,
+      priorityScore: p.score,
+      // The console's "why this priority" panel parses this and lists the
+      // factors that actually contributed, each with the points it added.
+      priorityFactors: JSON.stringify(p.factors),
+    };
     return { ...shaped, complaint: shaped };
   }
 
@@ -1133,7 +1145,10 @@ export class WebIntegrationService implements OnModuleInit {
       // holding three rows would be worse than a constant that says what it
       // is. Replace these with real coordinates for the city being served —
       // they are also what the assistant answers "near the hospital" against.
-      landmarks: GIS_LANDMARKS,
+      // The same table priority.ts scores against, not a copy. A hand-kept
+      // second list meant the map could draw one set of risk zones while the
+      // score counted another, and nothing would catch the divergence.
+      landmarks: LANDMARKS,
     };
   }
 
