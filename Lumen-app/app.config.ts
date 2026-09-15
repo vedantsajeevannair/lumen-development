@@ -2,7 +2,10 @@ import { ExpoConfig, ConfigContext } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: "Lumen-app",
+  // Shown under the icon when the web build is installed to a home screen,
+  // and on the Android app itself. "Lumen-app" was the scaffold's directory
+  // name, not a product name.
+  name: "LUMEN",
   slug: "Lumen-app",
   version: "1.0.0",
   orientation: "portrait",
@@ -19,6 +22,21 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   web: {
     output: "static",
+    // Installability. Without a manifest a phone treats "Add to Home Screen"
+    // as a bookmark: browser chrome stays, the icon is a screenshot, and the
+    // label is the URL. These are what turn it into something that opens like
+    // an app.
+    name: "LUMEN",
+    shortName: "LUMEN",
+    display: "standalone",
+    themeColor: "#1e2a78",
+    backgroundColor: "#0f172a",
+    orientation: "portrait",
+    description:
+      "Report road damage from a photograph. Computer-vision detection, " +
+      "severity scoring and tracked repair.",
+    lang: "en",
+    startUrl: "/",
   },
   plugins: [
     "expo-router",
