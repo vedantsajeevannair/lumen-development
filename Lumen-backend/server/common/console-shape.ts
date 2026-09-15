@@ -110,10 +110,7 @@ export function toConsoleShape<T extends Shapeable>(c: T) {
      * true and renderable.
      */
     department: departmentOf(c) ?? { name: 'Unassigned' },
-    /**
-     * No zones in this schema. Empty rather than invented — the console
-     * renders it beside the department and an empty string simply disappears.
-     */
+    /** Chosen on the report form. Empty for anything filed before it was stored. */
     zone: c.zone ?? '',
     /**
      * Assignment is recorded in the timeline, not on the complaint, so there
@@ -130,7 +127,16 @@ export function toConsoleShape<T extends Shapeable>(c: T) {
     // --- detail-page fields ---------------------------------------------
     lat: c.latitude ?? null,
     lng: c.longitude ?? null,
-    address: c.address ?? '',
+    /**
+     * What the reporter wrote, and only that. It falls back to the coordinates
+     * rather than to a zone name, because a crew reading "Central Zone" learns
+     * nothing they did not already know from the map pin.
+     */
+    address:
+      c.address ??
+      (c.latitude != null && c.longitude != null
+        ? `${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}`
+        : ''),
     /**
      * One image per complaint here, where the console expects a gallery. It
      * filters on kind === "CITIZEN", so the kind has to be set or the reported

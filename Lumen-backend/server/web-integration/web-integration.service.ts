@@ -877,6 +877,20 @@ export class WebIntegrationService implements OnModuleInit {
         status: ComplaintStatus.PENDING,
         latitude: body.lat ? Number(body.lat) : 12.9716,
         longitude: body.lng ? Number(body.lng) : 77.5946,
+        // The form sends all three and they were being dropped on the floor.
+        //
+        // accuracy is what separates a fix taken standing over the defect from
+        // one the browser guessed off a wifi network — the report form already
+        // shows the reporter "located to within N m" and then threw the number
+        // away.
+        //
+        // address is what a crew actually navigates by. "Near the 4th Block bus
+        // stop" finds the pothole; 12.9716, 77.5946 sends them to the middle of
+        // the city. Without it the detail page had nothing to print but the
+        // coordinates.
+        accuracy: body.accuracy ? Number(body.accuracy) : null,
+        zone: body.zone ? String(body.zone) : null,
+        address: body.address ? String(body.address).trim() || null : null,
         imageUrl,
         reporterId: userId,
       },
