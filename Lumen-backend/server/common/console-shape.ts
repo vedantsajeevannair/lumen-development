@@ -1,4 +1,4 @@
-import { severityPercent } from './derivations';
+import { complaintDerivations, severityPercent } from './derivations';
 
 /**
  * Compatibility fields for the operations console.
@@ -17,6 +17,14 @@ import { severityPercent } from './derivations';
  * These are additive. Every existing field keeps its name and meaning, so the
  * mobile app and anything else reading this endpoint are unaffected.
  */
+
+/** Midpoint of each priority band, on the 0-100 scale the console renders. */
+const PRIORITY_SCORE: Record<string, number> = {
+  CRITICAL: 85,
+  HIGH: 65,
+  MEDIUM: 40,
+  LOW: 15,
+};
 
 type Shapeable = {
   trackingId: string;
@@ -83,6 +91,11 @@ function toConsoleDetections(pred: any): string | null {
 export function toConsoleShape<T extends Shapeable>(c: T) {
   return {
     ...c,
+    // severityBand, severityPercent, slaHours and slaStatus. The list endpoint
+    // already spread these; the detail endpoint did not, so the complaint page
+    // rendered "Resolution SLA   h" with the number missing entirely and had no
+    // band to colour its severity meter by.
+    ...complaintDerivations(c as any),
     /** The console's name for trackingId. */
     ref: c.trackingId,
     /**
@@ -144,7 +157,20 @@ export function toConsoleShape<T extends Shapeable>(c: T) {
     aiConfidence: c.aiPrediction?.confidenceScore ?? c.confidence ?? null,
     civicCategory: 'ROADS',
     autoRouted: false,
-    priorityScore: severityPercent(c.severity),
+    /**
+     * Scored from the priority band, not from severity.
+     *
+     * The console prints this number directly beneath the priority badge,
+     * labelled "severity + location, age, reports". Deriving it from severity
+     * alone put "0 / 100" under a badge reading High on any complaint whose
+     * priority came from clustering rather than from the photograph — the two
+     * fields contradicted each other on screen.
+     *
+     * Priority here is only ever a band, so this is the midpoint of the band's
+     * range: enough for the console's meter to fill sensibly, and consistent
+     * with the badge beside it.
+     */
+    priorityScore: PRIORITY_SCORE[c.priority ?? 'MEDIUM'] ?? 40,
     /**
      * The console parses this as JSON to explain a priority. Give it the real
      * inputs rather than null, so the explanation is grounded.
