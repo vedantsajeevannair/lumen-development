@@ -269,6 +269,8 @@ interface ComplaintWithRelations {
   status: ComplaintStatus;
   latitude: number | null;
   longitude: number | null;
+  zone?: string | null;
+  address?: string | null;
   imageUrl: string | null;
   createdAt: Date;
   severity: number | null;
@@ -568,13 +570,14 @@ export class WebIntegrationService implements OnModuleInit {
       title: c.title,
       description: c.description,
       category: c.category,
-      zone: 'Central Zone',
+      zone: c.zone ?? '',
       address:
-        c.latitude && c.longitude
+        c.address ??
+        (c.latitude != null && c.longitude != null
           ? `${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}`
-          : 'Lumen City',
-      lat: c.latitude || 12.9716,
-      lng: c.longitude || 77.5946,
+          : 'Location not recorded'),
+      lat: c.latitude,
+      lng: c.longitude,
       status: this.mapStatusToFrontend(c.status),
       priority: this.mapPriority(c.priority),
       slaHours:
@@ -875,8 +878,21 @@ export class WebIntegrationService implements OnModuleInit {
         category,
         priority: (body.priority || 'MEDIUM') as Priority,
         status: ComplaintStatus.PENDING,
-        latitude: body.lat ? Number(body.lat) : 12.9716,
-        longitude: body.lng ? Number(body.lng) : 77.5946,
+        // Null, not a city-centre placeholder.
+        //
+        // Stamping every fix-less report with 12.9716, 77.5946 put them all at
+        // distance zero from each other, so the clustering that raises priority
+        // and the 20 m duplicate check both fired on an artifact of the
+        // fallback rather than on anything in the city. Three complaints sat on
+        // that exact point and two of them had been escalated because of it.
+        //
+        // Everything downstream already handles an absent fix: the duplicate
+        // check skips it, the clusterer and the map filter it out, and the
+        // priority scorer awards no location risk. A complaint without a
+        // location is simply one that cannot be placed — which is true, and is
+        // more useful than one placed somewhere it is not.
+        latitude: body.lat ? Number(body.lat) : null,
+        longitude: body.lng ? Number(body.lng) : null,
         // The form sends all three and they were being dropped on the floor.
         //
         // accuracy is what separates a fix taken standing over the defect from
@@ -997,11 +1013,16 @@ export class WebIntegrationService implements OnModuleInit {
       where: { role: Role.ENGINEER, isActive: true, isDeleted: false },
     });
 
-    const cs: AssignComplaint[] = complaints.map((c) => ({
+    const cs: AssignComplaint[] = complaints
+      // Dispatch is chosen on travel distance. A complaint with no fix has no
+      // distance to anywhere, and placing it at a default would route a crew to
+      // a spot nobody reported.
+      .filter((c) => c.latitude != null && c.longitude != null)
+      .map((c) => ({
       id: c.id,
       ref: c.trackingId,
-      lat: c.latitude || 12.9716,
-      lng: c.longitude || 77.5946,
+      lat: c.latitude!,
+      lng: c.longitude!,
       category: c.category,
       severityScore: c.aiPrediction?.confidenceScore
         ? c.aiPrediction.confidenceScore * 100
@@ -1109,12 +1130,17 @@ export class WebIntegrationService implements OnModuleInit {
       where: { role: Role.ENGINEER, isActive: true, isDeleted: false },
     });
 
-    const formattedComplaints = complaints.map((c) => ({
+    const formattedComplaints = complaints
+      // Only what can actually be placed. A pin at a fallback coordinate claims
+      // a defect is somewhere it is not, which on a dispatch map is worse than
+      // leaving it off and letting the queue carry it.
+      .filter((c) => c.latitude != null && c.longitude != null)
+      .map((c) => ({
       id: c.id,
       ref: c.trackingId,
       title: c.title,
-      lat: c.latitude || 12.9716,
-      lng: c.longitude || 77.5946,
+      lat: c.latitude!,
+      lng: c.longitude!,
       status: this.mapStatusToFrontend(c.status),
       priority: c.priority,
       // The map colours each marker by severity band and labels it with its
