@@ -30,6 +30,10 @@ services:
       - ./web:/srv/web:ro
       # The Expo web export of the citizen app, served on its own hostname.
       - ./app:/srv/app:ro
+      # The signed Android APK and its landing page. Served from here because
+      # Expo's own artifact links expire after about a month, which would make
+      # any install instructions written down today stop working.
+      - ./downloads:/srv/downloads:ro
       # Certificates and OCSP staples. Losing this volume means re-issuing certs
       # on every restart, which will hit Let's Encrypt rate limits.
       - caddy_data:/data

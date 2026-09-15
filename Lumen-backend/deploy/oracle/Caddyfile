@@ -88,6 +88,32 @@
 		respond "Method not allowed" 405
 	}
 
+	# --- Android app download ----------------------------------------------------
+	# The APK is served from this box rather than linked from Expo's build servers,
+	# whose artifact URLs expire after about thirty days. Here the link lives as
+	# long as the instance does, and re-releasing is a file copy into ./downloads.
+	#
+	# Explicit Content-Type: Caddy would otherwise guess application/octet-stream
+	# from the extension, and some Android browsers refuse to hand an octet-stream
+	# to the package installer, silently saving it as an unopenable file instead.
+	@apk path /lumen.apk
+	handle @apk {
+		root * /srv/downloads
+		header Content-Type application/vnd.android.package-archive
+		header Content-Disposition "attachment; filename=lumen.apk"
+		# No long cache: this path is a moving target across releases, and a stale
+		# cached copy would install an old build with no indication anything is old.
+		header Cache-Control "no-cache, must-revalidate"
+		file_server
+	}
+
+	handle /download* {
+		root * /srv/downloads
+		try_files {path} /index.html
+		header Cache-Control "no-cache, must-revalidate"
+		file_server
+	}
+
 	# --- Socket.IO ------------------------------------------------------------
 	# Long-lived upgrades. Caddy proxies WebSockets natively; the only thing that
 	# matters is not buffering or timing them out.
