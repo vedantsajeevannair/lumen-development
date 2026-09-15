@@ -1,13 +1,15 @@
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import { useAuth } from "../auth";
 import { navForRole, ROLE_LABELS } from "../lib/rbac";
 import { Sidebar } from "./Sidebar";
 import { NotificationBell } from "./NotificationBell";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 export function AppShell() {
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center text-slate-400">Loading…</div>;
@@ -51,7 +53,13 @@ export function AppShell() {
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-6 py-8">
-          <Outlet />
+          {/* Wraps the routed page only. A crash inside one screen leaves the
+              sidebar and header standing, so the user can navigate out instead
+              of being stranded on a blank document. Keyed on the path so
+              moving to another page clears the error. */}
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
