@@ -185,6 +185,17 @@ export function toConsoleShape<T extends Shapeable>(c: T) {
       severity: c.severity ?? 0,
       confidence: c.confidence ?? 0,
     }),
+    /**
+     * Declared by the console and never sent, which is the shape of every
+     * white-screen this project has had: the type promises a field, TypeScript
+     * believes it, and the read throws at runtime.
+     *
+     * Null rather than invented. Assignment here is recorded in the timeline,
+     * not on the complaint, so there is no method or distance to report — but
+     * the key must exist for the page to read it safely.
+     */
+    assignMethod: null,
+    assignDistance: null,
     duplicateOfId: null,
     dupSimilarity: null,
     dupDistanceM: null,

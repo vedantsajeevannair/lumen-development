@@ -571,6 +571,10 @@ export class WebIntegrationService implements OnModuleInit {
       description: c.description,
       category: c.category,
       zone: c.zone ?? '',
+      // Declared on the dashboard's row type and never sent. Everything this
+      // detector emits is road damage, so the value is constant — but the key
+      // has to be present, because the page reads it without guarding.
+      civicCategory: 'ROADS',
       address:
         c.address ??
         (c.latitude != null && c.longitude != null
