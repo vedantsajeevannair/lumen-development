@@ -28,6 +28,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # The built SPA (Lumen-Web/dist). Static files, served directly.
       - ./web:/srv/web:ro
+      # The Expo web export of the citizen app, served on its own hostname.
+      - ./app:/srv/app:ro
       # Certificates and OCSP staples. Losing this volume means re-issuing certs
       # on every restart, which will hit Let's Encrypt rate limits.
       - caddy_data:/data
@@ -96,7 +98,11 @@ services:
       # Same-origin deployment: the browser calls /api on the page's own origin,
       # so no cross-origin request is ever made. Listed anyway because the value
       # is also used for absolute links in outbound mail.
-      FRONTEND_URL: https://${DOMAIN}
+      # Both origins: the console on the bare hostname and the citizen app on
+      # app.<hostname>. The app is cross-origin to the API, so omitting it here
+      # makes every request from it fail CORS with nothing in the UI to explain
+      # why.
+      FRONTEND_URL: https://${DOMAIN},https://app.${DOMAIN}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

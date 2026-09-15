@@ -45,9 +45,19 @@
 	#
 	# Adding a GET endpoint under /auth means adding it here too, or it will
 	# silently return index.html with a 200 instead of the intended JSON.
+	#
+	# OPTIONS belongs here as well, and its absence was invisible until a second
+	# origin existed. A browser preflights a cross-origin POST with OPTIONS; with
+	# that verb falling through to the static handler, Caddy answered 405 with
+	# "allow: GET, HEAD" and no CORS headers, so the request was blocked before
+	# the API ever saw it. The console never noticed because same-origin requests
+	# are not preflighted. The app, on app.<host>, is a different origin and is.
+	#
+	# There is no ambiguity to preserve: the SPA has no use for OPTIONS, so every
+	# one of them under /auth is a preflight for an API call.
 	@auth_api {
 		path /auth/*
-		method POST PUT PATCH DELETE
+		method POST PUT PATCH DELETE OPTIONS
 	}
 	handle @auth_api {
 		reverse_proxy api:3000
@@ -108,6 +118,41 @@
 		# DuckDNS subdomain does not want a browser pinned to HTTPS for a year.
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
+
+# The citizen mobile app, exported for the web.
+#
+# Its own hostname rather than a path on the console's, because the export
+# generates absolute routes — /(citizen)/Dashboard and the like — and serving
+# those under a subdirectory would need every one rewritten. sslip.io answers
+# any prefix, so app.<ip>.sslip.io costs nothing and gets its own certificate.
+#
+# Same origin policy consequence worth knowing: this is a *different* origin
+# from the console, so the app's requests to the API are cross-origin and
+# depend on the backend's CORS allow-list including this host. FRONTEND_URL in
+# the compose file carries it.
+app.{$DOMAIN} {
+	encode gzip zstd
+
+	handle {
+		root * /srv/app
+		# Expo router is a single-page app: an unknown path is a client route,
+		# not a missing file, so a deep link must still serve the document.
+		try_files {path} {path}.html /index.html
+		file_server
+
+		@assets path /_expo/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
+		@html path / /index.html
+		header @html Cache-Control "no-cache, no-store, must-revalidate"
+	}
+
+	header {
+		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		-Server
 	}
