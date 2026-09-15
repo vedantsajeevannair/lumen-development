@@ -36,11 +36,20 @@ export function NewComplaint() {
   // picture, and the fix is to choose another one.
   const [rejected, setRejected] = useState<string | null>(null);
 
-  // The city centre, used until something better is known. The same pair is the
-  // server's fallback in routes/complaints.ts, so a report filed without a fix
-  // lands in the same place whichever side supplied it.
-  const [lat, setLat] = useState("12.9716");
-  const [lng, setLng] = useState("77.5946");
+  // Empty until someone supplies a real fix, either from the device or by
+  // typing one.
+  //
+  // These used to be pre-filled with the city centre, mirroring a server-side
+  // fallback that no longer exists. The API now records no location rather than
+  // inventing one — but a pre-filled field defeats that completely, because the
+  // form posts the placeholder on every submission and the API cannot tell it
+  // from a real reading. Three complaints ended up stacked on that exact point,
+  // which made them each other's neighbours and inflated their priority.
+  //
+  // Blank is also the honest state: it says nothing about where the defect is,
+  // which is the truth until the reporter says otherwise.
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
@@ -297,8 +306,8 @@ export function NewComplaint() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div><label className={label}>Zone</label><select name="zone" className={input}>{ZONES.map((z) => <option key={z}>{z}</option>)}</select></div>
             <div><label className={label}>Address / landmark</label><input name="address" placeholder="e.g. Near 4th Block bus stop" className={input} /></div>
-            <div><label className={label}>Latitude</label><input name="lat" type="number" step="0.000001" value={lat} onChange={(e) => setLat(e.target.value)} className={input} /></div>
-            <div><label className={label}>Longitude</label><input name="lng" type="number" step="0.000001" value={lng} onChange={(e) => setLng(e.target.value)} className={input} /></div>
+            <div><label className={label}>Latitude</label><input name="lat" type="number" step="0.000001" placeholder="optional" value={lat} onChange={(e) => setLat(e.target.value)} className={input} /></div>
+            <div><label className={label}>Longitude</label><input name="lng" type="number" step="0.000001" placeholder="optional" value={lng} onChange={(e) => setLng(e.target.value)} className={input} /></div>
           </div>
 
           {/* Typing coordinates is fine for a desk report about somewhere else,
