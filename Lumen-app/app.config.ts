@@ -48,6 +48,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     "expo-secure-store",
   ],
+  // EAS project this builds under. `eas init` creates it but cannot write to a
+  // dynamic config (this file is TypeScript, not app.json), so it is set here
+  // by hand — without it a non-interactive build has nothing to upload to.
+  owner: "vedantsajeevannair",
+  extra: {
+    eas: {
+      projectId: "bd1d720c-e9b5-4d44-8e98-b202ec78918c",
+    },
+  },
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
